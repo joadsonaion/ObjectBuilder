@@ -36,6 +36,7 @@ package ob.commands.things
      * - sourceTransparency:Boolean
      * - sourceImprovedAnimations:Boolean
      * - sourceFrameGroups:Boolean
+     * - mapObjectsOnly:Boolean
      */
     public class BulkReplaceCommand extends WorkerCommand
     {
@@ -50,11 +51,12 @@ package ob.commands.things
                                            sourceExtended:Boolean,
                                            sourceTransparency:Boolean,
                                            sourceImprovedAnimations:Boolean,
-                                           sourceFrameGroups:Boolean)
+                                           sourceFrameGroups:Boolean,
+                                           mapObjectsOnly:Boolean = false)
         {
             super(sourceDatPath, sourceSprPath, thingIds, category,
                   sourceExtended, sourceTransparency, sourceImprovedAnimations,
-                  sourceFrameGroups);
+                  sourceFrameGroups, mapObjectsOnly);
         }
     }
 }

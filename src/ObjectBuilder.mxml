@@ -795,7 +795,9 @@ THE SOFTWARE.
                         sendCommand(new MergeFilesCommand(window.datFile,
                                     window.sprFile,
                                     window.version,
-                                    features));
+                                    features,
+                                    window.reuseExistingSprites,
+                                    window.mergeMode));
                     }
                 }
             }
@@ -2589,13 +2591,14 @@ THE SOFTWARE.
                 saveThingChanges();
             }
 
-            public function openBulkReplace():void
+            public function openBulkReplace(mapObjectsOnly:Boolean = false):void
             {
                 if (!clientLoaded)
                     return;
 
                 var window:BulkReplaceWindow = new BulkReplaceWindow();
                 window.application = this;
+                window.mapObjectsOnly = mapObjectsOnly;
                 window.addEventListener(Event.CLOSE, function(event:Event):void
                     {
                         _locked = false;
@@ -3947,6 +3950,10 @@ THE SOFTWARE.
 
                     case Menu.TOOLS_BULK_REPLACE:
                         openBulkReplace();
+                        break;
+
+                    case Menu.TOOLS_BULK_REPLACE_MAP_OBJECTS:
+                        openBulkReplace(true);
                         break;
 
                     case Menu.VIEW_SHOW_OBJECTS_GRID:

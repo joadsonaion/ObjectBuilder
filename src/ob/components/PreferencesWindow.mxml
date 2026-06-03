@@ -132,6 +132,7 @@ THE SOFTWARE.
                 itemsDurationNumericStepper.value = settings.itemsDuration;
                 outfitsDurationNumericStepper.value = settings.outfitsDuration;
                 effectsDurationNumericStepper.value = settings.effectsDuration;
+                missilesDurationNumericStepper.value = settings.missilesDuration;
                 clipboardActionDropDown.selectedIndex = settings.thingListClipboardAction;
                 deleteAfterPasteCheckBox.selected = settings.deleteAfterPaste;
                 syncOtbOnAddCheckBox.selected = settings.syncOtbOnAdd;
@@ -220,6 +221,7 @@ THE SOFTWARE.
                 _settings.itemsDuration = itemsDurationNumericStepper.value;
                 _settings.outfitsDuration = outfitsDurationNumericStepper.value;
                 _settings.effectsDuration = effectsDurationNumericStepper.value;
+                _settings.missilesDuration = missilesDurationNumericStepper.value;
                 _settings.thingListClipboardAction = clipboardActionDropDown.selectedIndex;
                 _settings.deleteAfterPaste = deleteAfterPasteCheckBox.selected;
                 _settings.syncOtbOnAdd = syncOtbOnAddCheckBox.selected;
@@ -373,6 +375,9 @@ THE SOFTWARE.
 
                 <s:NumericStepper id="effectsDurationNumericStepper" width="100" minimum="0" maximum="1000"/>
                 <s:Label text="{resourceManager.getString('strings', 'effects')}" paddingTop="5"/>
+
+                <s:NumericStepper id="missilesDurationNumericStepper" width="100" minimum="0" maximum="1000"/>
+                <s:Label text="{resourceManager.getString('strings', 'missiles')}" paddingTop="5"/>
 
             </mg:GroupBox>
 

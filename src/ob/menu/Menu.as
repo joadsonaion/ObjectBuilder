@@ -280,6 +280,12 @@ package ob.menu
             toolsBulkReplace.data = TOOLS_BULK_REPLACE;
             toolsMenu.addMenuItem(toolsBulkReplace);
 
+            // Tools > Bulk Replace Map Objects
+            var toolsBulkReplaceMapObjects:MenuItem = new MenuItem();
+            toolsBulkReplaceMapObjects.label = "Bulk Replace Map Objects";
+            toolsBulkReplaceMapObjects.data = TOOLS_BULK_REPLACE_MAP_OBJECTS;
+            toolsMenu.addMenuItem(toolsBulkReplaceMapObjects);
+
             // Separator
             toolsMenu.addMenuItem(separator);
 
@@ -587,6 +593,7 @@ package ob.menu
         public static const HELP_ABOUT:String = "helpAbount";
         public static const TOOLS_QUICK_SAVE:String = "toolsQuickSave";
         public static const TOOLS_BULK_REPLACE:String = "toolsBulkReplace";
+        public static const TOOLS_BULK_REPLACE_MAP_OBJECTS:String = "toolsBulkReplaceMapObjects";
         public static const VIEW_SHOW_OBJECTS_GRID:String = "viewShowObjectsGrid";
         public static const TOOLS_CREATE_MISSING_ITEMS:String = "toolsCreateMissingItems";
         public static const TOOLS_RELOAD_ITEM_ATTRIBUTES:String = "toolsReloadItemAttributes";

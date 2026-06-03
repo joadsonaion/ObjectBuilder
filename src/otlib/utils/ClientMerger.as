@@ -25,6 +25,8 @@ package otlib.utils
     import com.mignari.errors.FileNotFoundError;
     import com.mignari.errors.NullArgumentError;
 
+    import by.blooddy.crypto.MD5;
+
     import flash.events.ErrorEvent;
     import flash.events.Event;
     import flash.events.EventDispatcher;
@@ -40,8 +42,10 @@ package otlib.utils
     import otlib.events.ProgressEvent;
     import otlib.sprites.SpriteStorage;
     import otlib.storages.StorageQueueLoader;
+    import otlib.things.ThingCategory;
     import otlib.things.ThingType;
     import otlib.things.ThingTypeStorage;
+    import otlib.animation.FrameDuration;
     import otlib.animation.FrameGroup;
     import otlib.things.FrameGroupType;
     import ob.settings.ObjectBuilderSettings;
@@ -61,6 +65,14 @@ package otlib.utils
         private var m_effectsCount:uint;
         private var m_missilesCount:uint;
         private var m_spritesCount:uint;
+        private var m_reusedSpritesCount:uint;
+        private var m_skippedObjectsCount:uint;
+        private var m_reuseExistingSprites:Boolean;
+        private var m_mergeMode:String;
+        private var m_existingSpriteIds:Dictionary;
+        private var m_currentSpriteHashes:Dictionary;
+        private var m_existingThingKeys:Dictionary;
+        private var m_sourceSpriteIds:Dictionary;
 
         private var m_currentObjects:ThingTypeStorage;
         private var m_currentSprites:SpriteStorage;
@@ -90,6 +102,14 @@ package otlib.utils
         public function get spritesCount():uint
         {
             return m_spritesCount;
+        }
+        public function get reusedSpritesCount():uint
+        {
+            return m_reusedSpritesCount;
+        }
+        public function get skippedObjectsCount():uint
+        {
+            return m_skippedObjectsCount;
         }
 
         // --------------------------------------------------------------------------
@@ -124,7 +144,9 @@ package otlib.utils
                 sprFile:File,
                 version:Version,
                 features:ClientFeatures,
-                optimizeSprites:Boolean = true):void
+                optimizeSprites:Boolean = true,
+                reuseExistingSprites:Boolean = true,
+                mergeMode:String = "all"):void
         {
             if (!datFile)
                 throw new NullArgumentError("datFile");
@@ -141,6 +163,10 @@ package otlib.utils
             if (!version)
                 throw new NullArgumentError("version");
 
+            m_reuseExistingSprites = reuseExistingSprites;
+            m_mergeMode = mergeMode ? mergeMode : ClientMergeMode.ALL;
+            m_reusedSpritesCount = 0;
+            m_skippedObjectsCount = 0;
             m_objects = new ThingTypeStorage(m_settings);
             m_objects.addEventListener(ErrorEvent.ERROR, errorHandler);
 
@@ -194,28 +220,39 @@ package otlib.utils
             var oldMissilesCount:uint = m_currentObjects.missilesCount;
             var oldSpritesCount:uint = m_currentSprites.spritesCount;
 
+            buildSourceSpriteIndex();
+
+            if (m_reuseExistingSprites)
+                buildExistingSpriteIndex();
+
             mergeSpriteList(1, m_sprites.spritesCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 1, 5));
 
-            mergeObjectList(m_objects.items, 100, m_objects.itemsCount);
+            if (m_reuseExistingSprites)
+                buildExistingThingIndex();
+
+            mergeObjectList(m_objects.items, ThingCategory.ITEM, 100, m_objects.itemsCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 2, 5));
 
-            mergeObjectList(m_objects.outfits, 1, m_objects.outfitsCount);
+            mergeObjectList(m_objects.outfits, ThingCategory.OUTFIT, 1, m_objects.outfitsCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 3, 5));
 
-            mergeObjectList(m_objects.effects, 1, m_objects.effectsCount);
+            mergeObjectList(m_objects.effects, ThingCategory.EFFECT, 1, m_objects.effectsCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 4, 5));
 
-            mergeObjectList(m_objects.missiles, 1, m_objects.missilesCount);
+            mergeObjectList(m_objects.missiles, ThingCategory.MISSILE, 1, m_objects.missilesCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 5, 5));
 
-            m_currentObjects.invalidate();
-            m_currentSprites.invalidate();
             m_itemsCount = m_currentObjects.itemsCount - oldItemsCount;
             m_outfitsCount = m_currentObjects.outfitsCount - oldOutfitsCount;
             m_effectsCount = m_currentObjects.effectsCount - oldEffectsCount;
             m_missilesCount = m_currentObjects.missilesCount - oldMissilesCount;
             m_spritesCount = m_currentSprites.spritesCount - oldSpritesCount;
+
+            if (m_itemsCount || m_outfitsCount || m_effectsCount || m_missilesCount)
+                m_currentObjects.invalidate();
+            if (m_spritesCount)
+                m_currentSprites.invalidate();
 
             // Cleanup temporary storages to prevent memory leak
             if (m_objects)
@@ -229,9 +266,112 @@ package otlib.utils
                 m_sprites = null;
             }
             m_spriteIds = null;
+            m_existingSpriteIds = null;
+            m_currentSpriteHashes = null;
+            m_existingThingKeys = null;
+            m_sourceSpriteIds = null;
 
             if (hasEventListener(Event.COMPLETE))
                 dispatchEvent(new Event(Event.COMPLETE));
+        }
+
+        private function buildExistingSpriteIndex():void
+        {
+            m_existingSpriteIds = new Dictionary();
+            m_currentSpriteHashes = new Dictionary();
+
+            var count:uint = m_currentSprites.spritesCount;
+            for (var id:uint = 1; id <= count; id++)
+            {
+                if (id % 1000 == 0)
+                    dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, id, count, "Indexing existing sprites..."));
+
+                if (m_currentSprites.isEmptySprite(id))
+                    continue;
+
+                var pixels:ByteArray = m_currentSprites.getPixels(id);
+                if (!pixels)
+                    continue;
+
+                var hash:String = getPixelsHash(pixels);
+                m_currentSpriteHashes[id] = hash;
+                if (m_existingSpriteIds[hash] === undefined)
+                    m_existingSpriteIds[hash] = id;
+            }
+        }
+
+        private function buildExistingThingIndex():void
+        {
+            m_existingThingKeys = new Dictionary();
+
+            indexThingList(m_currentObjects.items, ThingCategory.ITEM, 100, m_currentObjects.itemsCount);
+            indexThingList(m_currentObjects.outfits, ThingCategory.OUTFIT, 1, m_currentObjects.outfitsCount);
+            indexThingList(m_currentObjects.effects, ThingCategory.EFFECT, 1, m_currentObjects.effectsCount);
+            indexThingList(m_currentObjects.missiles, ThingCategory.MISSILE, 1, m_currentObjects.missilesCount);
+        }
+
+        private function indexThingList(list:Dictionary, category:String, min:uint, max:uint):void
+        {
+            if (!list || max < min)
+                return;
+
+            for (var id:uint = min; id <= max; id++)
+            {
+                if (id % 1000 == 0)
+                    dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, id, max, "Indexing existing objects..."));
+
+                var thing:ThingType = list[id];
+                if (ThingUtils.isEmpty(thing))
+                    continue;
+
+                thing.category = category;
+
+                var key:String = getThingKey(thing);
+                if (key)
+                    m_existingThingKeys[key] = true;
+            }
+        }
+
+        private function buildSourceSpriteIndex():void
+        {
+            m_sourceSpriteIds = null;
+
+            if (m_mergeMode == ClientMergeMode.ALL)
+                return;
+
+            m_sourceSpriteIds = new Dictionary();
+            collectSourceSpriteIds(m_objects.items, ThingCategory.ITEM, 100, m_objects.itemsCount);
+            collectSourceSpriteIds(m_objects.outfits, ThingCategory.OUTFIT, 1, m_objects.outfitsCount);
+            collectSourceSpriteIds(m_objects.effects, ThingCategory.EFFECT, 1, m_objects.effectsCount);
+            collectSourceSpriteIds(m_objects.missiles, ThingCategory.MISSILE, 1, m_objects.missilesCount);
+        }
+
+        private function collectSourceSpriteIds(list:Dictionary, category:String, min:uint, max:uint):void
+        {
+            if (!list || max < min)
+                return;
+
+            for (var id:uint = min; id <= max; id++)
+            {
+                var thing:ThingType = list[id];
+                if (!shouldMergeThing(thing, category) || ThingUtils.isEmpty(thing))
+                    continue;
+
+                for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
+                {
+                    var frameGroup:FrameGroup = thing.getFrameGroup(groupType);
+                    if (!frameGroup || !frameGroup.spriteIndex)
+                        continue;
+
+                    var spriteIds:Vector.<uint> = frameGroup.spriteIndex;
+                    for (var k:int = spriteIds.length - 1; k >= 0; k--)
+                    {
+                        var sid:uint = spriteIds[k];
+                        if (sid != 0)
+                            m_sourceSpriteIds[sid] = true;
+                    }
+                }
+            }
         }
 
         private function mergeSpriteList(min:int, max:uint):void
@@ -242,6 +382,12 @@ package otlib.utils
 
             for (var id:int = min; id <= max; id++)
             {
+                if (m_sourceSpriteIds && m_sourceSpriteIds[id] === undefined)
+                {
+                    m_spriteIds[id] = 0;
+                    continue;
+                }
+
                 if (m_sprites.isEmptySprite(id))
                 {
                     m_spriteIds[id] = 0;
@@ -249,19 +395,59 @@ package otlib.utils
                 else
                 {
                     var pixels:ByteArray = m_sprites.getPixels(id);
-                    m_currentSprites.internalAddSprite(pixels, result);
-                    m_spriteIds[id] = m_currentSprites.spritesCount;
+                    var existingId:uint = getExistingSpriteId(pixels);
+                    if (existingId != 0)
+                    {
+                        m_spriteIds[id] = existingId;
+                        m_reusedSpritesCount++;
+                    }
+                    else
+                    {
+                        var hash:String = m_reuseExistingSprites ? getPixelsHash(pixels) : null;
+                        m_currentSprites.internalAddSprite(pixels, result);
+                        m_spriteIds[id] = m_currentSprites.spritesCount;
+
+                        if (m_reuseExistingSprites && hash && m_existingSpriteIds[hash] === undefined)
+                            m_existingSpriteIds[hash] = m_currentSprites.spritesCount;
+                        if (m_reuseExistingSprites && hash && m_currentSpriteHashes)
+                            m_currentSpriteHashes[m_currentSprites.spritesCount] = hash;
+                    }
                 }
             }
         }
 
-        private function mergeObjectList(list:Dictionary, min:uint, max:uint):void
+        private function getExistingSpriteId(pixels:ByteArray):uint
+        {
+            if (!m_reuseExistingSprites || !pixels || !m_existingSpriteIds)
+                return 0;
+
+            var hash:String = getPixelsHash(pixels);
+            if (m_existingSpriteIds[hash] !== undefined)
+                return uint(m_existingSpriteIds[hash]);
+
+            return 0;
+        }
+
+        private function getPixelsHash(pixels:ByteArray):String
+        {
+            pixels.position = 0;
+            var hash:String = MD5.hashBytes(pixels);
+            pixels.position = 0;
+            return hash;
+        }
+
+        private function mergeObjectList(list:Dictionary, category:String, min:uint, max:uint):void
         {
             var objects:Vector.<ThingType> = new Vector.<ThingType>();
 
             for (var id:int = min; id <= max; id++)
             {
                 var type:ThingType = list[id];
+
+                if (!shouldMergeThing(type, category))
+                    continue;
+
+                type.category = category;
 
                 if (ThingUtils.isEmpty(type))
                     continue;
@@ -287,11 +473,201 @@ package otlib.utils
                     }
                 }
 
+                if (m_reuseExistingSprites && ThingUtils.isEmpty(type))
+                    continue;
+
+                if (m_reuseExistingSprites && isExistingThing(type))
+                {
+                    m_skippedObjectsCount++;
+                    continue;
+                }
+
                 objects[objects.length] = type;
             }
 
             if (objects.length != 0)
                 m_currentObjects.addThings(objects);
+        }
+
+        private function shouldMergeThing(thing:ThingType, category:String):Boolean
+        {
+            if (!thing)
+                return false;
+
+            switch (m_mergeMode)
+            {
+                case ClientMergeMode.PICKUPABLE_ITEMS:
+                    return category == ThingCategory.ITEM && thing.pickupable;
+
+                case ClientMergeMode.OUTFITS:
+                    return category == ThingCategory.OUTFIT;
+
+                case ClientMergeMode.EFFECTS:
+                    return category == ThingCategory.EFFECT;
+
+                case ClientMergeMode.MISSILES:
+                    return category == ThingCategory.MISSILE;
+
+                case ClientMergeMode.OBJECTS:
+                    return true;
+
+                case ClientMergeMode.UNIQUE_ASSETS:
+                    return category == ThingCategory.ITEM ||
+                            category == ThingCategory.OUTFIT ||
+                            category == ThingCategory.EFFECT ||
+                            category == ThingCategory.MISSILE;
+            }
+
+            return true;
+        }
+
+        private function isExistingThing(thing:ThingType):Boolean
+        {
+            if (!m_existingThingKeys)
+                return false;
+
+            var key:String = getThingKey(thing);
+            if (!key)
+                return false;
+
+            if (m_existingThingKeys[key] !== undefined)
+                return true;
+
+            m_existingThingKeys[key] = true;
+            return false;
+        }
+
+        private function getThingKey(thing:ThingType):String
+        {
+            if (m_mergeMode == ClientMergeMode.UNIQUE_ASSETS)
+                return getVisualThingKey(thing);
+
+            return getFullThingKey(thing);
+        }
+
+        private function getFullThingKey(thing:ThingType):String
+        {
+            if (!thing)
+                return null;
+
+            var parts:Array = [thing.category];
+
+            for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
+            {
+                var frameGroup:FrameGroup = thing.getFrameGroup(groupType);
+                if (!frameGroup)
+                {
+                    parts[parts.length] = groupType;
+                    parts[parts.length] = "null";
+                    continue;
+                }
+
+                parts[parts.length] = groupType;
+                parts[parts.length] = frameGroup.width;
+                parts[parts.length] = frameGroup.height;
+                parts[parts.length] = frameGroup.exactSize;
+                parts[parts.length] = frameGroup.layers;
+                parts[parts.length] = frameGroup.patternX;
+                parts[parts.length] = frameGroup.patternY;
+                parts[parts.length] = frameGroup.patternZ;
+                parts[parts.length] = frameGroup.frames;
+                parts[parts.length] = frameGroup.isAnimation ? 1 : 0;
+                parts[parts.length] = frameGroup.animationMode;
+                parts[parts.length] = frameGroup.loopCount;
+                parts[parts.length] = frameGroup.startFrame;
+
+                var durations:Vector.<FrameDuration> = frameGroup.frameDurations;
+                parts[parts.length] = durations ? durations.length : 0;
+                if (durations)
+                {
+                    for (var d:uint = 0; d < durations.length; d++)
+                    {
+                        var duration:FrameDuration = durations[d];
+                        if (duration)
+                        {
+                            parts[parts.length] = duration.minimum;
+                            parts[parts.length] = duration.maximum;
+                        }
+                        else
+                        {
+                            parts[parts.length] = 0;
+                            parts[parts.length] = 0;
+                        }
+                    }
+                }
+
+                var spriteIds:Vector.<uint> = frameGroup.spriteIndex;
+                parts[parts.length] = spriteIds ? spriteIds.length : 0;
+                if (spriteIds)
+                {
+                    for (var s:uint = 0; s < spriteIds.length; s++)
+                        parts[parts.length] = spriteIds[s];
+                }
+            }
+
+            return parts.join("|");
+        }
+
+        private function getVisualThingKey(thing:ThingType):String
+        {
+            if (!thing)
+                return null;
+
+            var parts:Array = [thing.category, "visual"];
+
+            for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
+            {
+                var frameGroup:FrameGroup = thing.getFrameGroup(groupType);
+                if (!frameGroup)
+                {
+                    parts[parts.length] = groupType;
+                    parts[parts.length] = "null";
+                    continue;
+                }
+
+                parts[parts.length] = groupType;
+                parts[parts.length] = frameGroup.width;
+                parts[parts.length] = frameGroup.height;
+                parts[parts.length] = frameGroup.exactSize;
+                parts[parts.length] = frameGroup.layers;
+                parts[parts.length] = frameGroup.patternX;
+                parts[parts.length] = frameGroup.patternY;
+                parts[parts.length] = frameGroup.patternZ;
+                parts[parts.length] = frameGroup.frames;
+
+                var spriteIds:Vector.<uint> = frameGroup.spriteIndex;
+                parts[parts.length] = spriteIds ? spriteIds.length : 0;
+                if (spriteIds)
+                {
+                    for (var s:uint = 0; s < spriteIds.length; s++)
+                        parts[parts.length] = getCurrentSpriteHash(spriteIds[s]);
+                }
+            }
+
+            return parts.join("|");
+        }
+
+        private function getCurrentSpriteHash(spriteId:uint):String
+        {
+            if (spriteId == 0)
+                return "0";
+
+            if (!m_currentSpriteHashes)
+                m_currentSpriteHashes = new Dictionary();
+
+            if (m_currentSpriteHashes[spriteId] !== undefined)
+                return String(m_currentSpriteHashes[spriteId]);
+
+            if (!m_currentSprites || spriteId > m_currentSprites.spritesCount)
+                return "missing:" + spriteId;
+
+            var pixels:ByteArray = m_currentSprites.getPixels(spriteId);
+            if (!pixels)
+                return "missing:" + spriteId;
+
+            var hash:String = getPixelsHash(pixels);
+            m_currentSpriteHashes[spriteId] = hash;
+            return hash;
         }
 
         // --------------------------------------

@@ -20,27 +20,23 @@
 *  THE SOFTWARE.
 */
 
-package ob.commands.things
+package otlib.utils
 {
-    import com.mignari.workers.WorkerCommand;
+    import nail.errors.AbstractClassError;
 
-    public class OptimizeFrameDurationsCommand extends WorkerCommand
+    public final class ClientMergeMode
     {
-        // --------------------------------------------------------------------------
-        // CONSTRUCTOR
-        // --------------------------------------------------------------------------
+        public static const ALL:String = "all";
+        public static const PICKUPABLE_ITEMS:String = "pickupableItems";
+        public static const OUTFITS:String = "outfits";
+        public static const EFFECTS:String = "effects";
+        public static const MISSILES:String = "missiles";
+        public static const OBJECTS:String = "objects";
+        public static const UNIQUE_ASSETS:String = "uniqueAssets";
 
-        public function OptimizeFrameDurationsCommand(items:Boolean, itemsMinimumDuration:uint, itemsMaximumDuration:uint,
-                outfits:Boolean, outfitsMinimumDuration:uint, outfitsMaximumDuration:uint,
-                effects:Boolean, effectsMinimumDuration:uint, effectsMaximumDuration:uint,
-                missiles:Boolean = false, missilesMinimumDuration:uint = 0, missilesMaximumDuration:uint = 0,
-                spreadDurationAcrossFrames:Boolean = false)
+        public function ClientMergeMode()
         {
-            super(items, itemsMinimumDuration, itemsMaximumDuration,
-                    outfits, outfitsMinimumDuration, outfitsMaximumDuration,
-                    effects, effectsMinimumDuration, effectsMaximumDuration,
-                    missiles, missilesMinimumDuration, missilesMaximumDuration,
-                    spreadDurationAcrossFrames);
+            throw new AbstractClassError(ClientMergeMode);
         }
     }
 }

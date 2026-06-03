@@ -26,7 +26,7 @@ THE SOFTWARE.
     xmlns:mx="library://ns.adobe.com/flex/mx"
     xmlns:mg="library://ns.mignari.com/mg"
     width="400"
-    height="400"
+    height="500"
     fontSize="11"
     title="@Resource(key='frameDurationsOptimizer', bundle='strings')"
     creationComplete="creationCompleteHandler(event)"
@@ -56,6 +56,9 @@ THE SOFTWARE.
             private var m_inProgress:Boolean;
             
             private var m_communicator:IWorkerCommunicator;
+
+            private static const RESTORE_EFFECTS_DURATION:uint = 140;
+            private static const RESTORE_MISSILES_DURATION:uint = 100;
             
             // --------------------------------------
             // Getters / Setters
@@ -104,6 +107,21 @@ THE SOFTWARE.
             {
                 m_inProgress = false;
             }
+
+            private function setDefaultDurationValues():void
+            {
+                itemsMinimumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.ITEM);
+                itemsMaximumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.ITEM);
+            
+                outfitsMinimumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.OUTFIT);
+                outfitsMaximumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.OUTFIT);
+            
+                effectsMinimumDurationNumericStepper.value = Math.max(m_application.settings.getDefaultDuration(ThingCategory.EFFECT), RESTORE_EFFECTS_DURATION);
+                effectsMaximumDurationNumericStepper.value = Math.max(m_application.settings.getDefaultDuration(ThingCategory.EFFECT), RESTORE_EFFECTS_DURATION);
+
+                missilesMinimumDurationNumericStepper.value = Math.max(m_application.settings.getDefaultDuration(ThingCategory.MISSILE), RESTORE_MISSILES_DURATION);
+                missilesMaximumDurationNumericStepper.value = Math.max(m_application.settings.getDefaultDuration(ThingCategory.MISSILE), RESTORE_MISSILES_DURATION);
+            }
             
             // --------------------------------------
             // Event Handlers
@@ -112,15 +130,7 @@ THE SOFTWARE.
             private function creationCompleteHandler(event:FlexEvent):void
             {
                 m_application = FlexGlobals.topLevelApplication as IObjectBuilder;
-            
-                itemsMinimumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.ITEM);
-                itemsMaximumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.ITEM);
-            
-                outfitsMinimumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.OUTFIT);
-                outfitsMaximumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.OUTFIT);
-            
-                effectsMinimumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.EFFECT);
-                effectsMaximumDurationNumericStepper.value = m_application.settings.getDefaultDuration(ThingCategory.EFFECT);
+                setDefaultDurationValues();
             }
             
             private function closingHandler(event:Event):void
@@ -139,12 +149,31 @@ THE SOFTWARE.
                 if (m_inProgress)
                     return;
             
-                if (!itemsGroupCheckBox.selected && !outfitsGroupCheckBox.selected && !effectsGroupCheckBox.selected)
+                if (!itemsGroupCheckBox.selected &&
+                        !outfitsGroupCheckBox.selected &&
+                        !effectsGroupCheckBox.selected &&
+                        !missilesGroupCheckBox.selected)
                     return;
             
                 m_communicator.sendCommand(new OptimizeFrameDurationsCommand(itemsGroupCheckBox.selected, itemsMinimumDurationNumericStepper.value, itemsMaximumDurationNumericStepper.value,
                             outfitsGroupCheckBox.selected, outfitsMinimumDurationNumericStepper.value, outfitsMaximumDurationNumericStepper.value,
-                            effectsGroupCheckBox.selected, effectsMinimumDurationNumericStepper.value, effectsMaximumDurationNumericStepper.value));
+                            effectsGroupCheckBox.selected, effectsMinimumDurationNumericStepper.value, effectsMaximumDurationNumericStepper.value,
+                            missilesGroupCheckBox.selected, missilesMinimumDurationNumericStepper.value, missilesMaximumDurationNumericStepper.value));
+                m_inProgress = true;
+            }
+
+            private function restoreDefaultSpeedButtonClickHandler(event:MouseEvent):void
+            {
+                if (m_inProgress)
+                    return;
+
+                setDefaultDurationValues();
+
+                m_communicator.sendCommand(new OptimizeFrameDurationsCommand(true, itemsMinimumDurationNumericStepper.value, itemsMaximumDurationNumericStepper.value,
+                            true, outfitsMinimumDurationNumericStepper.value, outfitsMaximumDurationNumericStepper.value,
+                            true, effectsMinimumDurationNumericStepper.value, effectsMaximumDurationNumericStepper.value,
+                            true, missilesMinimumDurationNumericStepper.value, missilesMaximumDurationNumericStepper.value,
+                            true));
                 m_inProgress = true;
             }
             
@@ -182,6 +211,18 @@ THE SOFTWARE.
             {
                 if (effectsMaximumDurationNumericStepper.value < effectsMinimumDurationNumericStepper.value)
                     effectsMinimumDurationNumericStepper.value = effectsMaximumDurationNumericStepper.value;
+            }
+
+            private function missilesMinimumDurationChangeHandler(event:Event):void
+            {
+                if (missilesMinimumDurationNumericStepper.value > missilesMaximumDurationNumericStepper.value)
+                    missilesMaximumDurationNumericStepper.value = missilesMinimumDurationNumericStepper.value;
+            }
+
+            private function missilesMaximumDurationChangeHandler(event:Event):void
+            {
+                if (missilesMaximumDurationNumericStepper.value < missilesMinimumDurationNumericStepper.value)
+                    missilesMinimumDurationNumericStepper.value = missilesMaximumDurationNumericStepper.value;
             }
         ]]>
     </fx:Script>
@@ -233,6 +274,20 @@ THE SOFTWARE.
             <s:Label text="{resourceManager.getString('strings', 'maximumDuration')}" paddingTop="5"/>
         </mg:GroupCheckBox>
 
+        <mg:GroupCheckBox id="missilesGroupCheckBox"
+            width="100%"
+            label="@Resource(key='missiles', bundle='strings')">
+            <mg:layout>
+                <s:TileLayout requestedColumnCount="2" padding="10"/>
+            </mg:layout>
+
+            <s:NumericStepper id="missilesMinimumDurationNumericStepper" width="100" minimum="0" maximum="1000" enabled="{missilesGroupCheckBox.selected}" change="missilesMinimumDurationChangeHandler(event)"/>
+            <s:Label text="{resourceManager.getString('strings', 'minimumDuration')}" paddingTop="5"/>
+
+            <s:NumericStepper id="missilesMaximumDurationNumericStepper" width="100" minimum="0" maximum="1000" enabled="{missilesGroupCheckBox.selected}" change="missilesMaximumDurationChangeHandler(event)"/>
+            <s:Label text="{resourceManager.getString('strings', 'maximumDuration')}" paddingTop="5"/>
+        </mg:GroupCheckBox>
+
         <mg:GroupBox width="100%" height="55" label="@Resource(key='progress', bundle='strings')">
             <mg:layout>
                 <s:HorizontalLayout padding="10" gap="10"/>
@@ -241,6 +296,10 @@ THE SOFTWARE.
             <s:Button id="startButton" minWidth="70" height="20"
                 label="@Resource(key='start', bundle='strings')"
                 click="startButtonClickHandler(event)"/>
+
+            <s:Button id="restoreDefaultSpeedButton" minWidth="155" height="20"
+                label="@Resource(key='restoreByDuration', bundle='strings')"
+                click="restoreDefaultSpeedButtonClickHandler(event)"/>
 
             <mx:ProgressBar id="progressBar"
                 width="100%"

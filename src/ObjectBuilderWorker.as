@@ -37,6 +37,7 @@ package
     import flash.geom.Rectangle;
     import flash.utils.ByteArray;
     import flash.utils.Dictionary;
+    import flash.utils.Endian;
 
     import mx.resources.ResourceManager;
 
@@ -139,6 +140,7 @@ package
     import otlib.utils.ChangeResult;
     import otlib.utils.ClientInfo;
     import otlib.utils.ClientMerger;
+    import otlib.utils.ClientMergeMode;
     import otlib.utils.OTFI;
     import otlib.utils.OTFormat;
     import otlib.utils.SpritesOptimizer;
@@ -564,7 +566,9 @@ package
         private function mergeFilesCallback(datPath:String,
                 sprPath:String,
                 version:Version,
-                features:ClientFeatures):void
+                features:ClientFeatures,
+                reuseExistingSprites:Boolean = true,
+                mergeMode:String = "all"):void
         {
             if (isNullOrEmpty(datPath))
                 throw new NullOrEmptyArgumentError("datPath");
@@ -579,11 +583,19 @@ package
             var sprFile:File = new File(sprPath);
             var mergeFeatures:ClientFeatures = features.clone();
             mergeFeatures.applyVersionDefaults(version.value);
+            if (mergeMode != ClientMergeMode.ALL)
+                reuseExistingSprites = true;
 
             var merger:ClientMerger = new ClientMerger(_things, _sprites, _settings);
             merger.addEventListener(ProgressEvent.PROGRESS, progressHandler);
             merger.addEventListener(Event.COMPLETE, completeHandler);
-            merger.start(datFile, sprFile, version, mergeFeatures);
+            merger.start(datFile,
+                    sprFile,
+                    version,
+                    mergeFeatures,
+                    true,
+                    reuseExistingSprites,
+                    mergeMode);
 
             function progressHandler(event:ProgressEvent):void
             {
@@ -641,6 +653,10 @@ package
                     parts.push(merger.missilesCount + " missiles");
                 if (merger.spritesCount > 0)
                     parts.push(merger.spritesCount + " sprites");
+                if (merger.reusedSpritesCount > 0)
+                    parts.push(merger.reusedSpritesCount + " reused sprites");
+                if (merger.skippedObjectsCount > 0)
+                    parts.push(merger.skippedObjectsCount + " skipped duplicate objects");
                 if (parts.length > 0)
                 {
                     Log.info(Resources.getString("logMerged", parts.join(", ")));
@@ -1964,13 +1980,17 @@ package
                                                sourceExtended:Boolean,
                                                sourceTransparency:Boolean,
                                                sourceImprovedAnimations:Boolean,
-                                               sourceFrameGroups:Boolean):void
+                                               sourceFrameGroups:Boolean,
+                                               mapObjectsOnly:Boolean = false):void
         {
             if (!sourceDatPath || !sourceSprPath || !thingIds || thingIds.length == 0)
                 return;
 
             if (!ThingCategory.getCategory(category))
                 return;
+
+            if (mapObjectsOnly)
+                category = ThingCategory.ITEM;
 
             var total:uint = thingIds.length;
             sendCommand(new ProgressCommand(ProgressBarID.DEFAULT, 0, total, "Preparing bulk replace..."));
@@ -1991,11 +2011,13 @@ package
             try
             {
                 var datStream:FileStream = new FileStream();
+                datStream.endian = Endian.LITTLE_ENDIAN;
                 datStream.open(sourceDatFile, FileMode.READ);
                 datSignature = datStream.readUnsignedInt();
                 datStream.close();
 
                 var sprStream:FileStream = new FileStream();
+                sprStream.endian = Endian.LITTLE_ENDIAN;
                 sprStream.open(sourceSprFile, FileMode.READ);
                 sprSignature = sprStream.readUnsignedInt();
                 sprStream.close();
@@ -2043,6 +2065,7 @@ package
             }
 
             var replacedCount:uint = 0;
+            var skippedCount:uint = 0;
 
             for (var i:uint = 0; i < total; i++)
             {
@@ -2053,6 +2076,18 @@ package
                 var sourceThing:ThingType = sourceThings.getThingType(id, category);
                 if (!sourceThing)
                     continue;
+
+                if (mapObjectsOnly)
+                {
+                    var targetThing:ThingType = _things.getThingType(id, category);
+                    var targetItem:ServerItem = otbLoaded ? _items.getItemByClientId(id) : null;
+
+                    if (!isMapRelatedThing(sourceThing) || !isMapRelatedThing(targetThing, targetItem))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+                }
 
                 // Collect sprite IDs from source thing and import them
                 var spriteMap:Object = {};
@@ -2133,7 +2168,71 @@ package
                 Log.info("Bulk replaced " + replacedCount + " objects from external source.");
             }
 
+            if (mapObjectsOnly)
+                Log.info("Bulk Replace Map Objects skipped " + skippedCount + " non-map objects.");
+
             sendCommand(new HideProgressBarCommand(ProgressBarID.DEFAULT));
+        }
+
+        private function isMapRelatedThing(thing:ThingType, serverItem:ServerItem = null):Boolean
+        {
+            if (!thing || thing.category != ThingCategory.ITEM)
+                return false;
+
+            if (serverItem)
+            {
+                if (serverItem.type == ServerItemType.GROUND ||
+                        serverItem.stackOrder == TileStackOrder.BORDER ||
+                        serverItem.stackOrder == TileStackOrder.BOTTOM ||
+                        serverItem.stackOrder == TileStackOrder.TOP ||
+                        serverItem.fullGround ||
+                        serverItem.hasElevation)
+                    return true;
+
+                if (!serverItem.pickupable &&
+                        !serverItem.movable &&
+                        !serverItem.stackable &&
+                        serverItem.type != ServerItemType.CONTAINER &&
+                        serverItem.type != ServerItemType.FLUID &&
+                        serverItem.type != ServerItemType.SPLASH &&
+                        (serverItem.unpassable ||
+                         serverItem.blockMissiles ||
+                         serverItem.blockPathfinder ||
+                         serverItem.hangable ||
+                         serverItem.rotatable))
+                    return true;
+            }
+
+            if (thing.isGround ||
+                    thing.isGroundBorder ||
+                    thing.isOnBottom ||
+                    thing.isOnTop ||
+                    thing.isFullGround ||
+                    thing.floorChange ||
+                    thing.hasElevation ||
+                    thing.isVertical ||
+                    thing.isHorizontal)
+                return true;
+
+            if (!thing.pickupable &&
+                    !thing.isContainer &&
+                    !thing.stackable &&
+                    !thing.isFluidContainer &&
+                    !thing.isFluid &&
+                    !thing.writable &&
+                    !thing.writableOnce &&
+                    !thing.cloth &&
+                    !thing.isMarketItem &&
+                    thing.isUnmoveable &&
+                    (thing.isUnpassable ||
+                     thing.blockMissile ||
+                     thing.blockPathfind ||
+                     thing.hasElevation ||
+                     thing.hangable ||
+                     thing.dontHide))
+                return true;
+
+            return false;
         }
 
         private function applyBulkDuration(thing:ThingType, min:uint, max:uint, targetGroup:int):void
@@ -3073,11 +3172,15 @@ package
 
         private function optimizeFrameDurationsCallback(items:Boolean, itemsMinimumDuration:uint, itemsMaximumDuration:uint,
                 outfits:Boolean, outfitsMinimumDuration:uint, outfitsMaximumDuration:uint,
-                effects:Boolean, effectsMinimumDuration:uint, effectsMaximumDuration:uint):void
+                effects:Boolean, effectsMinimumDuration:uint, effectsMaximumDuration:uint,
+                missiles:Boolean = false, missilesMinimumDuration:uint = 0, missilesMaximumDuration:uint = 0,
+                spreadDurationAcrossFrames:Boolean = false):void
         {
             var optimizer:FrameDurationsOptimizer = new FrameDurationsOptimizer(_things, items, itemsMinimumDuration, itemsMaximumDuration,
                     outfits, outfitsMinimumDuration, outfitsMaximumDuration,
-                    effects, effectsMinimumDuration, effectsMaximumDuration);
+                    effects, effectsMinimumDuration, effectsMaximumDuration,
+                    missiles, missilesMinimumDuration, missilesMaximumDuration,
+                    spreadDurationAcrossFrames);
             optimizer.addEventListener(ProgressEvent.PROGRESS, progressHandler);
             optimizer.addEventListener(Event.COMPLETE, completeHandler);
             optimizer.start();

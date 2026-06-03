@@ -107,6 +107,6 @@ package ob.core
         function sendCommand(command:WorkerCommand):void;
 
         function populateFoundTab(items:Vector.<ThingListItem>):void;
-        function openBulkReplace():void;
+        function openBulkReplace(mapObjectsOnly:Boolean = false):void;
     }
 }

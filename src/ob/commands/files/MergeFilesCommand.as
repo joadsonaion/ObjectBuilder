@@ -28,7 +28,6 @@ package ob.commands.files
 
     import otlib.core.ClientFeatures;
     import otlib.core.Version;
-    import otlib.core.ClientFeatures;
 
     public class MergeFilesCommand extends WorkerCommand
     {
@@ -39,12 +38,16 @@ package ob.commands.files
         public function MergeFilesCommand(datFile:File,
                 sprFile:File,
                 version:Version,
-                features:ClientFeatures)
+                features:ClientFeatures,
+                reuseExistingSprites:Boolean = true,
+                mergeMode:String = "all")
         {
             super(datFile.nativePath,
                     sprFile.nativePath,
                     version,
-                    features);
+                    features,
+                    reuseExistingSprites,
+                    mergeMode);
         }
     }
 }

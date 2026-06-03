@@ -48,6 +48,10 @@ package otlib.utils
 
     public class FrameDurationsOptimizer extends EventDispatcher
     {
+        private static const MINIMUM_SPREAD_FRAME_DURATION:uint = 100;
+        private static const MINIMUM_EFFECTS_SPREAD_FRAME_DURATION:uint = 140;
+        private static const MINIMUM_MISSILES_SPREAD_FRAME_DURATION:uint = 100;
+
         // --------------------------------------------------------------------------
         // PROPERTIES
         // --------------------------------------------------------------------------
@@ -63,6 +67,11 @@ package otlib.utils
         private var m_effectsEnabled:Boolean;
         private var m_effectsMinimumDuration:uint;
         private var m_effectsMaximumDuration:uint;
+        private var m_missilesEnabled:Boolean;
+        private var m_missilesMinimumDuration:uint;
+        private var m_missilesMaximumDuration:uint;
+        private var m_spreadDurationAcrossFrames:Boolean;
+        private var m_changed:Boolean;
 
         // --------------------------------------------------------------------------
         // CONSTRUCTOR
@@ -70,7 +79,9 @@ package otlib.utils
 
         public function FrameDurationsOptimizer(objects:ThingTypeStorage, items:Boolean, itemsMinimumDuration:uint, itemsMaximumDuration:uint,
                 outfits:Boolean, outfitsMinimumDuration:uint, outfitsMaximumDuration:uint,
-                effects:Boolean, effectsMinimumDuration:uint, effectsMaximumDuration:uint)
+                effects:Boolean, effectsMinimumDuration:uint, effectsMaximumDuration:uint,
+                missiles:Boolean = false, missilesMinimumDuration:uint = 0, missilesMaximumDuration:uint = 0,
+                spreadDurationAcrossFrames:Boolean = false)
         {
             if (!objects)
                 throw new NullArgumentError("objects");
@@ -87,6 +98,11 @@ package otlib.utils
             m_effectsEnabled = effects;
             m_effectsMinimumDuration = effectsMinimumDuration;
             m_effectsMaximumDuration = effectsMaximumDuration;
+
+            m_missilesEnabled = missiles;
+            m_missilesMinimumDuration = missilesMinimumDuration;
+            m_missilesMaximumDuration = missilesMaximumDuration;
+            m_spreadDurationAcrossFrames = spreadDurationAcrossFrames;
         }
 
         // --------------------------------------------------------------------------
@@ -102,49 +118,79 @@ package otlib.utils
             if (m_finished)
                 return;
 
-            var steps:uint = 5;
+            var steps:uint = 6;
             var step:uint = 0;
 
             dispatchProgress(step++, steps, Resources.getString("startingTheOptimization"));
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInItems"));
             if (m_itemsEnabled)
-                changeFrameDurations(m_objects.items, m_itemsMinimumDuration, m_itemsMaximumDuration);
+                changeFrameDurations(m_objects.items, m_itemsMinimumDuration, m_itemsMaximumDuration, MINIMUM_SPREAD_FRAME_DURATION);
 
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInOutfits"));
             if (m_outfitsEnabled)
-                changeFrameDurations(m_objects.outfits, m_outfitsMinimumDuration, m_outfitsMaximumDuration);
+                changeFrameDurations(m_objects.outfits, m_outfitsMinimumDuration, m_outfitsMaximumDuration, MINIMUM_SPREAD_FRAME_DURATION);
 
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInEffects"));
             if (m_effectsEnabled)
-                changeFrameDurations(m_objects.effects, m_effectsMinimumDuration, m_effectsMaximumDuration);
+                changeFrameDurations(m_objects.effects, m_effectsMinimumDuration, m_effectsMaximumDuration,
+                        Math.max(m_effectsMinimumDuration, MINIMUM_EFFECTS_SPREAD_FRAME_DURATION));
+
+            dispatchProgress(step++, steps, Resources.getString("changingDurationsInMissiles"));
+            if (m_missilesEnabled)
+                changeFrameDurations(m_objects.missiles, m_missilesMinimumDuration, m_missilesMaximumDuration,
+                        Math.max(m_missilesMinimumDuration, MINIMUM_MISSILES_SPREAD_FRAME_DURATION));
+
+            if (m_changed)
+                m_objects.invalidate();
 
             m_finished = true;
             dispatchEvent(new Event(Event.COMPLETE));
         }
 
-        private function changeFrameDurations(list:Dictionary, minimum:uint, maximum:uint):void
+        private function changeFrameDurations(list:Dictionary, minimum:uint, maximum:uint, minimumSpreadFrameDuration:uint):void
         {
             for each (var thing:ThingType in list)
             {
                 for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
                 {
                     var frameGroup:FrameGroup = thing.getFrameGroup(groupType);
-                    if (!frameGroup || !frameGroup.frameDurations)
+                    if (!frameGroup || frameGroup.frames <= 1)
                         continue;
+
+                    if (!frameGroup.frameDurations || frameGroup.frameDurations.length != frameGroup.frames)
+                        frameGroup.frameDurations = new Vector.<FrameDuration>(frameGroup.frames, true);
 
                     for (var frame:uint = 0; frame < frameGroup.frames; frame++)
                     {
+                        var minimumFrameDuration:uint = m_spreadDurationAcrossFrames ? getFrameDuration(minimum, frame, frameGroup.frames, minimumSpreadFrameDuration) : minimum;
+                        var maximumFrameDuration:uint = m_spreadDurationAcrossFrames ? getFrameDuration(maximum, frame, frameGroup.frames, minimumSpreadFrameDuration) : maximum;
                         var duration:FrameDuration = frameGroup.getFrameDuration(frame);
-                        if (duration)
+                        if (!duration ||
+                                duration.minimum != minimumFrameDuration ||
+                                duration.maximum != maximumFrameDuration)
                         {
-                            duration.minimum = minimum;
-                            duration.maximum = maximum;
-
-                            frameGroup.frameDurations[frame] = duration.clone();
+                            frameGroup.frameDurations[frame] = new FrameDuration(minimumFrameDuration, maximumFrameDuration);
+                            m_changed = true;
                         }
                     }
                 }
             }
+        }
+
+        private function getFrameDuration(totalDuration:uint, frame:uint, frames:uint, minimumFrameDuration:uint):uint
+        {
+            if (!m_spreadDurationAcrossFrames || frames <= 1)
+                return totalDuration;
+
+            if (totalDuration == 0)
+                return 0;
+
+            var duration:uint = Math.floor(totalDuration / frames);
+            var remainder:uint = totalDuration % frames;
+            if (frame < remainder)
+                duration++;
+
+            return Math.max(minimumFrameDuration, duration);
         }
 
         private function dispatchProgress(current:uint, target:uint, label:String):void

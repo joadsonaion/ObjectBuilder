@@ -26,8 +26,8 @@ THE SOFTWARE.
     xmlns:mx="library://ns.adobe.com/flex/mx"
     xmlns:mg="library://ns.mignari.com/mg"
     xmlns:otlib="otlib.components.*"
-    width="550"
-    height="500"
+    width="760"
+    height="520"
     fontSize="11"
     title="@Resource(key='mergeClientFiles', bundle='strings')"
     creationComplete="windowCreationCompleteHandler(event)">
@@ -52,6 +52,7 @@ THE SOFTWARE.
             import otlib.events.FileTextInputEvent;
             import otlib.utils.ClientInfo;
             import otlib.utils.ClientInfoLoader;
+            import otlib.utils.ClientMergeMode;
             import otlib.utils.OTFormat;
             
             // --------------------------------------------------------------------------
@@ -71,6 +72,8 @@ THE SOFTWARE.
             private var m_improvedAnimationsChanged:Boolean;
             private var m_frameGroups:Boolean;
             private var m_frameGroupsChanged:Boolean;
+            private var m_reuseExistingSprites:Boolean = true;
+            private var m_mergeMode:String = ClientMergeMode.ALL;
             private var m_detail:uint;
             
             // --------------------------------------
@@ -158,6 +161,16 @@ THE SOFTWARE.
                     m_frameGroupsChanged = true;
                     invalidateProperties();
                 }
+            }
+
+            public function get reuseExistingSprites():Boolean
+            {
+                return m_reuseExistingSprites;
+            }
+
+            public function get mergeMode():String
+            {
+                return m_mergeMode;
             }
             
             public function get detail():uint
@@ -325,6 +338,12 @@ THE SOFTWARE.
                 effectsCountLabel.text = empty;
                 missilesCountLabel.text = empty;
                 loadButton.enabled = false;
+                pickupableItemsButton.enabled = false;
+                outfitsButton.enabled = false;
+                effectsButton.enabled = false;
+                missilesButton.enabled = false;
+                objectsButton.enabled = false;
+                uniqueAssetsButton.enabled = false;
                 extendedCheckBox.enabled = false;
                 m_sprFile = null;
                 m_datFile = null;
@@ -374,6 +393,21 @@ THE SOFTWARE.
                 improvedAnimationsCheckBox.selected = m_improvedAnimations;
                 frameGroupsCheckBox.selected = m_frameGroups;
                 loadButton.enabled = done;
+                pickupableItemsButton.enabled = done;
+                outfitsButton.enabled = done;
+                effectsButton.enabled = done;
+                missilesButton.enabled = done;
+                objectsButton.enabled = done;
+                uniqueAssetsButton.enabled = done;
+            }
+
+            private function closeWithMergeMode(mode:String):void
+            {
+                m_mergeMode = mode;
+                if (mode != ClientMergeMode.ALL)
+                    m_reuseExistingSprites = true;
+                m_detail = DialogDetail.OK;
+                close();
             }
             
             // --------------------------------------
@@ -422,11 +456,45 @@ THE SOFTWARE.
             {
                 frameGroups = frameGroupsCheckBox.selected;
             }
+
+            private function reuseExistingSpritesCheckBoxChangeHandler(event:Event):void
+            {
+                m_reuseExistingSprites = reuseExistingSpritesCheckBox.selected;
+            }
             
             private function loadButtonClickHandler(event:MouseEvent):void
             {
-                m_detail = DialogDetail.OK;
-                close();
+                closeWithMergeMode(ClientMergeMode.ALL);
+            }
+
+            private function pickupableItemsButtonClickHandler(event:MouseEvent):void
+            {
+                closeWithMergeMode(ClientMergeMode.PICKUPABLE_ITEMS);
+            }
+
+            private function outfitsButtonClickHandler(event:MouseEvent):void
+            {
+                closeWithMergeMode(ClientMergeMode.OUTFITS);
+            }
+
+            private function effectsButtonClickHandler(event:MouseEvent):void
+            {
+                closeWithMergeMode(ClientMergeMode.EFFECTS);
+            }
+
+            private function missilesButtonClickHandler(event:MouseEvent):void
+            {
+                closeWithMergeMode(ClientMergeMode.MISSILES);
+            }
+
+            private function objectsButtonClickHandler(event:MouseEvent):void
+            {
+                closeWithMergeMode(ClientMergeMode.OBJECTS);
+            }
+
+            private function uniqueAssetsButtonClickHandler(event:MouseEvent):void
+            {
+                closeWithMergeMode(ClientMergeMode.UNIQUE_ASSETS);
             }
             
             private function cancelButtonClickHandler(event:MouseEvent):void
@@ -496,6 +564,11 @@ THE SOFTWARE.
             <s:CheckBox id="frameGroupsCheckBox"
                 label="@Resource(key='frameGroups', bundle='strings')"
                 change="frameGroupsCheckBoxChangeHandler(event)"/>
+
+            <s:CheckBox id="reuseExistingSpritesCheckBox"
+                label="Only add missing objects/sprites"
+                selected="true"
+                change="reuseExistingSpritesCheckBoxChangeHandler(event)"/>
         </mg:GroupBox>
 
         <!-- dat -->
@@ -570,6 +643,42 @@ THE SOFTWARE.
             minWidth="70"
             enabled="false"
             click="loadButtonClickHandler(event)"/>
+
+        <s:Button id="pickupableItemsButton"
+            label="Pickups"
+            minWidth="75"
+            enabled="false"
+            click="pickupableItemsButtonClickHandler(event)"/>
+
+        <s:Button id="outfitsButton"
+            label="Outfits"
+            minWidth="80"
+            enabled="false"
+            click="outfitsButtonClickHandler(event)"/>
+
+        <s:Button id="effectsButton"
+            label="Effects"
+            minWidth="70"
+            enabled="false"
+            click="effectsButtonClickHandler(event)"/>
+
+        <s:Button id="missilesButton"
+            label="Missiles"
+            minWidth="70"
+            enabled="false"
+            click="missilesButtonClickHandler(event)"/>
+
+        <s:Button id="objectsButton"
+            label="Objects"
+            minWidth="70"
+            enabled="false"
+            click="objectsButtonClickHandler(event)"/>
+
+        <s:Button id="uniqueAssetsButton"
+            label="Unique Assets"
+            minWidth="95"
+            enabled="false"
+            click="uniqueAssetsButtonClickHandler(event)"/>
 
         <s:Button id="cancelButton"
             label="@Resource(key='cancel', bundle='strings')"

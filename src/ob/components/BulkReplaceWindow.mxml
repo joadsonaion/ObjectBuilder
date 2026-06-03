@@ -62,6 +62,7 @@ THE SOFTWARE.
             private var _application:IObjectBuilder;
             private var _datFile:File;
             private var _sprFile:File;
+            private var _mapObjectsOnly:Boolean = false;
 
             [Bindable]
             private var _datPath:String = "";
@@ -87,12 +88,26 @@ THE SOFTWARE.
                 _application = value;
             }
 
+            public function set mapObjectsOnly(value:Boolean):void
+            {
+                _mapObjectsOnly = value;
+            }
+
             // --------------------------------------------------------------------------
             // METHODS
             // --------------------------------------------------------------------------
 
             protected function creationCompleteHandler(event:FlexEvent):void
             {
+                if (_mapObjectsOnly)
+                {
+                    title = "Bulk Replace Map Objects";
+                    categoryDropDown.selectedIndex = 0;
+                    categoryDropDown.enabled = false;
+                    mapObjectsFilterLabel.visible = true;
+                    mapObjectsFilterLabel.includeInLayout = true;
+                }
+
                 // Copy current features from loaded client
                 if (_application && _application.clientInfo)
                 {
@@ -228,7 +243,8 @@ THE SOFTWARE.
                     extendedCheckBox.selected,
                     transparencyCheckBox.selected,
                     improvedAnimationsCheckBox.selected,
-                    frameGroupsCheckBox.selected
+                    frameGroupsCheckBox.selected,
+                    _mapObjectsOnly
                 );
 
                 _application.sendCommand(command);
@@ -281,6 +297,13 @@ THE SOFTWARE.
 
             <s:Label text="{_rangeSummary}"
                 color="{_rangeValid ? 0x80FF80 : 0xFF8080}"/>
+
+            <s:Label id="mapObjectsFilterLabel"
+                text="Filter: map objects only"
+                fontSize="10"
+                color="0xAAAAAA"
+                visible="false"
+                includeInLayout="false"/>
         </mg:GroupBox>
 
         <!-- Category -->
