@@ -298,9 +298,10 @@ THE SOFTWARE.
             private var _editOriginalThingData:ThingData;
             private var _historyReplaying:Boolean;
             private static const HISTORY_LIMIT:uint = 60;
-            private static const WEB_ASSET_SIZE:uint = 128;
-            private static const WEB_ITEM_FILL:Number = 0.82;
-            private static const WEB_OUTFIT_FILL:Number = 0.90;
+            private static const WEB_ITEM_ASSET_SIZE:uint = 64;
+            private static const WEB_OUTFIT_ASSET_SIZE:uint = 64;
+            private static const WEB_ITEM_FILL:Number = 0.88;
+            private static const WEB_OUTFIT_FILL:Number = 0.94;
             private var _clientInfo:ClientInfo;
             private var _version:Version;
             private var _extendedEnabled:Boolean;
@@ -1663,8 +1664,8 @@ THE SOFTWARE.
                     throw new Error("The selected item has no frame group.");
                 var bitmap:BitmapData = renderFirstVisibleItemFrame(data, frameGroup);
                 var normalized:BitmapData = normalizeWebAsset(bitmap,
-                        WEB_ASSET_SIZE,
-                        WEB_ASSET_SIZE,
+                        WEB_ITEM_ASSET_SIZE,
+                        WEB_ITEM_ASSET_SIZE,
                         WEB_ITEM_FILL);
                 bitmap.dispose();
                 return normalized;
@@ -1710,8 +1711,8 @@ THE SOFTWARE.
                 var prepared:Object = prepareOutfit(data);
                 var bitmap:BitmapData = renderThingFrame(prepared.data, prepared.group, 2, 0);
                 var normalized:BitmapData = normalizeWebAsset(bitmap,
-                        WEB_ASSET_SIZE,
-                        WEB_ASSET_SIZE,
+                        WEB_OUTFIT_ASSET_SIZE,
+                        WEB_OUTFIT_ASSET_SIZE,
                         WEB_OUTFIT_FILL);
                 bitmap.dispose();
                 return normalized;
@@ -1748,8 +1749,8 @@ THE SOFTWARE.
                 for each (var rawFrame:BitmapData in rawFrames)
                 {
                     frames.push(normalizeWebAsset(rawFrame,
-                            WEB_ASSET_SIZE,
-                            WEB_ASSET_SIZE,
+                            WEB_OUTFIT_ASSET_SIZE,
+                            WEB_OUTFIT_ASSET_SIZE,
                             WEB_OUTFIT_FILL,
                             sharedBounds));
                 }
@@ -1843,7 +1844,6 @@ THE SOFTWARE.
                 var scale:Number = Math.min(
                         (canvasWidth * safeFill) / bounds.width,
                         (canvasHeight * safeFill) / bounds.height);
-                scale = Math.min(1, scale);
                 var drawWidth:Number = bounds.width * scale;
                 var drawHeight:Number = bounds.height * scale;
                 var x:Number = (canvasWidth - drawWidth) / 2;
