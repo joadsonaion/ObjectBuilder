@@ -1657,14 +1657,17 @@ THE SOFTWARE.
                     frameGroup = data.getFrameGroup(FrameGroupType.WALKING);
                 if (!frameGroup)
                     throw new Error("The selected item has no frame group.");
-                return renderThingFrame(data, frameGroup, 0, 0);
+                var bitmap:BitmapData = renderThingFrame(data, frameGroup, 0, 0);
+                var canvas:BitmapData = placeWebAssetOnCanvas(bitmap);
+                bitmap.dispose();
+                return canvas;
             }
 
             private function createOutfitPngBitmap(data:ThingData):BitmapData
             {
                 var prepared:Object = prepareOutfit(data);
                 var bitmap:BitmapData = renderThingFrame(prepared.data, prepared.group, 2, 0);
-                var canvas:BitmapData = placeOutfitOnCanvas(bitmap);
+                var canvas:BitmapData = placeWebAssetOnCanvas(bitmap);
                 bitmap.dispose();
                 return canvas;
             }
@@ -1679,7 +1682,7 @@ THE SOFTWARE.
                 for (var frame:uint = 0; frame < frameGroup.frames; frame++)
                 {
                     var bitmap:BitmapData = renderThingFrame(prepared.data, frameGroup, 2, frame);
-                    frames.push(placeOutfitOnCanvas(bitmap));
+                    frames.push(placeWebAssetOnCanvas(bitmap));
                     bitmap.dispose();
 
                     var frameDuration:FrameDuration = frameGroup.getFrameDuration(frame);
@@ -1742,16 +1745,16 @@ THE SOFTWARE.
                 return result;
             }
 
-            private function placeOutfitOnCanvas(source:BitmapData):BitmapData
+            private function placeWebAssetOnCanvas(source:BitmapData):BitmapData
             {
-                const canvasWidth:uint = 64;
+                const canvasWidth:uint = 128;
                 const canvasHeight:uint = 128;
                 var canvas:BitmapData = new BitmapData(canvasWidth, canvasHeight, true, 0);
                 var scale:Number = Math.min(1, canvasWidth / source.width, canvasHeight / source.height);
                 var drawWidth:Number = Math.round(source.width * scale);
                 var drawHeight:Number = Math.round(source.height * scale);
                 var x:Number = Math.floor((canvasWidth - drawWidth) / 2);
-                var y:Number = canvasHeight - drawHeight;
+                var y:Number = Math.floor((canvasHeight - drawHeight) / 2);
 
                 if (scale == 1)
                 {
