@@ -48,9 +48,10 @@ package otlib.utils
 
     public class FrameDurationsOptimizer extends EventDispatcher
     {
-        private static const MINIMUM_SPREAD_FRAME_DURATION:uint = 100;
-        private static const MINIMUM_EFFECTS_SPREAD_FRAME_DURATION:uint = 140;
-        private static const MINIMUM_MISSILES_SPREAD_FRAME_DURATION:uint = 100;
+        private static const MINIMUM_ITEMS_ADAPTIVE_FRAME_DURATION:uint = 80;
+        private static const MINIMUM_OUTFITS_ADAPTIVE_FRAME_DURATION:uint = 90;
+        private static const MINIMUM_EFFECTS_ADAPTIVE_FRAME_DURATION:uint = 70;
+        private static const MINIMUM_MISSILES_ADAPTIVE_FRAME_DURATION:uint = 60;
 
         // --------------------------------------------------------------------------
         // PROPERTIES
@@ -124,21 +125,21 @@ package otlib.utils
             dispatchProgress(step++, steps, Resources.getString("startingTheOptimization"));
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInItems"));
             if (m_itemsEnabled)
-                changeFrameDurations(m_objects.items, m_itemsMinimumDuration, m_itemsMaximumDuration, MINIMUM_SPREAD_FRAME_DURATION);
+                changeFrameDurations(m_objects.items, m_itemsMinimumDuration, m_itemsMaximumDuration, MINIMUM_ITEMS_ADAPTIVE_FRAME_DURATION);
 
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInOutfits"));
             if (m_outfitsEnabled)
-                changeFrameDurations(m_objects.outfits, m_outfitsMinimumDuration, m_outfitsMaximumDuration, MINIMUM_SPREAD_FRAME_DURATION);
+                changeFrameDurations(m_objects.outfits, m_outfitsMinimumDuration, m_outfitsMaximumDuration, MINIMUM_OUTFITS_ADAPTIVE_FRAME_DURATION);
 
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInEffects"));
             if (m_effectsEnabled)
                 changeFrameDurations(m_objects.effects, m_effectsMinimumDuration, m_effectsMaximumDuration,
-                        Math.max(m_effectsMinimumDuration, MINIMUM_EFFECTS_SPREAD_FRAME_DURATION));
+                        MINIMUM_EFFECTS_ADAPTIVE_FRAME_DURATION);
 
             dispatchProgress(step++, steps, Resources.getString("changingDurationsInMissiles"));
             if (m_missilesEnabled)
                 changeFrameDurations(m_objects.missiles, m_missilesMinimumDuration, m_missilesMaximumDuration,
-                        Math.max(m_missilesMinimumDuration, MINIMUM_MISSILES_SPREAD_FRAME_DURATION));
+                        MINIMUM_MISSILES_ADAPTIVE_FRAME_DURATION);
 
             if (m_changed)
                 m_objects.invalidate();
@@ -177,19 +178,18 @@ package otlib.utils
             }
         }
 
-        private function getFrameDuration(totalDuration:uint, frame:uint, frames:uint, minimumFrameDuration:uint):uint
+        private function getFrameDuration(baseDuration:uint, frame:uint, frames:uint, minimumFrameDuration:uint):uint
         {
             if (!m_spreadDurationAcrossFrames || frames <= 1)
-                return totalDuration;
+                return baseDuration;
 
-            if (totalDuration == 0)
+            if (baseDuration == 0)
                 return 0;
 
-            var duration:uint = Math.floor(totalDuration / frames);
-            var remainder:uint = totalDuration % frames;
-            if (frame < remainder)
-                duration++;
-
+            // Treat the configured value as the legacy per-frame pace. Scaling by
+            // sqrt(frames) keeps long effects readable without making them linearly
+            // slower, while the category floor avoids near-zero frame durations.
+            var duration:uint = Math.round(baseDuration / Math.sqrt(frames));
             return Math.max(minimumFrameDuration, duration);
         }
 

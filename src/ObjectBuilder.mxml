@@ -60,6 +60,8 @@ THE SOFTWARE.
             import flash.display.Bitmap;
             import flash.display.BitmapData;
             import flash.display.Loader;
+            import flash.geom.Matrix;
+            import flash.geom.Point;
             import flash.net.FileFilter;
             import flash.net.registerClassAlias;
             import flash.utils.ByteArray;
@@ -92,6 +94,8 @@ THE SOFTWARE.
             import nail.logging.Log;
             import nail.logging.LogFileTarget;
             import nail.managers.PopUpWindowManager;
+            import nail.image.ImageCodec;
+            import nail.image.ImageFormat;
             import nail.utils.Descriptor;
             import nail.utils.FileData;
             import nail.utils.FileQueueHelper;
@@ -113,6 +117,7 @@ THE SOFTWARE.
             import ob.commands.files.CreateNewFilesCommand;
             import ob.commands.files.LoadFilesCommand;
             import ob.commands.files.MergeFilesCommand;
+            import ob.commands.files.MergePreviewResultCommand;
             import ob.commands.files.UnloadFilesCommand;
             import ob.commands.sprites.ExportSpritesCommand;
             import ob.commands.sprites.GetSpriteListCommand;
@@ -147,6 +152,9 @@ THE SOFTWARE.
             import ob.components.CreateAssetsWindow;
             import ob.components.ErrorWindow;
             import ob.components.MergeAssetsWindow;
+            import ob.components.PixelEditorWindow;
+            import ob.components.RmeBrushBuilderWindow;
+            import ob.components.ModernAssetsImportWindow;
             import ob.components.OpenAssetsWindow;
             import ob.components.ImportSelectionWindow;
             import ob.components.ListViewPager;
@@ -156,6 +164,7 @@ THE SOFTWARE.
             import ob.components.FrameDurationsOptimizerWindow;
             import ob.components.FrameGroupsConverterWindow;
             import ob.settings.ObjectBuilderSettings;
+            import ob.utils.AnimatedGifEncoder;
             import otlib.utils.OtlibUtils;
             import otlib.utils.OutfitData;
             
@@ -266,6 +275,20 @@ THE SOFTWARE.
             private var _categoryChanged:Boolean;
             private var _objectViewer:ObjectViewer;
             private var _slicer:Slicer;
+            private var _pendingMergeDat:File;
+            private var _pendingMergeSpr:File;
+            private var _pendingMergeVersion:Version;
+            private var _pendingMergeFeatures:ClientFeatures;
+            private var _pendingMergeReuse:Boolean;
+            private var _pendingMergeMode:String;
+            private var _pendingWebExportMode:String;
+            private var _pendingWebExportThingId:uint;
+            private var _pendingWebExportServerId:uint;
+            private var _undoHistory:Array = [];
+            private var _redoHistory:Array = [];
+            private var _editOriginalThingData:ThingData;
+            private var _historyReplaying:Boolean;
+            private static const HISTORY_LIMIT:uint = 60;
             private var _clientInfo:ClientInfo;
             private var _version:Version;
             private var _extendedEnabled:Boolean;
@@ -375,6 +398,14 @@ THE SOFTWARE.
             public function get otbLoaded():Boolean
             {
                 return _otbLoaded;
+            }
+            public function get canUndo():Boolean
+            {
+                return _undoHistory.length > 0;
+            }
+            public function get canRedo():Boolean
+            {
+                return _redoHistory.length > 0;
             }
             
             public function get thingData():ThingData
@@ -794,15 +825,69 @@ THE SOFTWARE.
                     if (window.detail == DialogDetail.OK)
                     {
                         _settings.setLastMergeDirectory(window.datFile);
-            
+
                         var features:ClientFeatures = ClientFeatures.fromWindow(window);
-                        sendCommand(new MergeFilesCommand(window.datFile,
-                                    window.sprFile,
-                                    window.version,
-                                    features,
-                                    window.reuseExistingSprites,
-                                    window.mergeMode));
+                        _pendingMergeDat = window.datFile;
+                        _pendingMergeSpr = window.sprFile;
+                        _pendingMergeVersion = window.version;
+                        _pendingMergeFeatures = features;
+                        _pendingMergeReuse = window.reuseExistingSprites;
+                        _pendingMergeMode = window.mergeMode;
+                        _locked = true;
+                        sendCommand(new MergeFilesCommand(_pendingMergeDat,
+                                    _pendingMergeSpr,
+                                    _pendingMergeVersion,
+                                    _pendingMergeFeatures,
+                                    _pendingMergeReuse,
+                                    _pendingMergeMode,
+                                    true));
                     }
+                }
+            }
+
+            private function mergePreviewResultCallback(items:uint,
+                    outfits:uint,
+                    effects:uint,
+                    missiles:uint,
+                    newSprites:uint,
+                    reusedSprites:uint,
+                    skippedObjects:uint,
+                    referencedSprites:uint,
+                    ignoredOrphanSprites:uint,
+                    sourceObjects:uint):void
+            {
+                var imported:uint = items + outfits + effects + missiles;
+                var report:String = "Source objects: " + sourceObjects + "\n" +
+                        "Objects to import: " + imported +
+                        " (items " + items + ", outfits " + outfits +
+                        ", effects " + effects + ", missiles " + missiles + ")\n" +
+                        "Duplicate objects skipped: " + skippedObjects + "\n" +
+                        "Referenced source sprites: " + referencedSprites + "\n" +
+                        "New sprites: " + newSprites + "\n" +
+                        "Existing sprites reused: " + reusedSprites + "\n" +
+                        "Orphan source sprites ignored: " + ignoredOrphanSprites +
+                        "\n\nApply this merge?";
+
+                Alert.show(report, "Merge Preview", Alert.YES | Alert.NO, this, closeHandler);
+
+                function closeHandler(event:CloseEvent):void
+                {
+                    _locked = false;
+                    if (event.detail == Alert.YES && _pendingMergeDat && _pendingMergeSpr)
+                    {
+                        sendCommand(new MergeFilesCommand(_pendingMergeDat,
+                                    _pendingMergeSpr,
+                                    _pendingMergeVersion,
+                                    _pendingMergeFeatures,
+                                    _pendingMergeReuse,
+                                    _pendingMergeMode,
+                                    false));
+                    }
+                    _pendingMergeDat = null;
+                    _pendingMergeSpr = null;
+                    _pendingMergeVersion = null;
+                    _pendingMergeFeatures = null;
+                    _pendingMergeMode = null;
                 }
             }
             
@@ -1288,6 +1373,359 @@ THE SOFTWARE.
                 categoryDropDownList.selectedIndex = 0;
                 thingStepper.value = 0;
                 _logs.removeAll();
+                _undoHistory.length = 0;
+                _redoHistory.length = 0;
+                _editOriginalThingData = null;
+                _pendingWebExportMode = null;
+                _pendingWebExportThingId = 0;
+                _pendingWebExportServerId = 0;
+            }
+
+            private function openRmeBrushBuilder():void
+            {
+                if (!clientLoaded || !_otbLoaded || currentCategory != ThingCategory.ITEM)
+                    return;
+                var active:ThingList = getActiveThingList();
+                var selected:Vector.<ThingListItem> = active ? active.selectedThingItems : null;
+                if (!selected || selected.length == 0)
+                {
+                    Alert.show("Select one or more item objects first.", "RME Brush Builder");
+                    return;
+                }
+                var window:RmeBrushBuilderWindow = new RmeBrushBuilderWindow();
+                window.selectedItems = selected;
+                window.open(this);
+            }
+
+            private function openModernAssetsImporter():void
+            {
+                if (!clientLoaded)
+                    return;
+                var window:ModernAssetsImportWindow = new ModernAssetsImportWindow();
+                window.clientVersion = _version.value;
+                window.addEventListener(Event.CLOSE, function(event:Event):void
+                    {
+                        if (window.detail == DialogDetail.OK && window.importedThings && window.importedThings.length > 0)
+                            sendCommand(new ImportThingsCommand(window.importedThings));
+                    });
+                window.open(this);
+            }
+
+            public function exportSelectedItemPngByServerId():void
+            {
+                prepareWebAssetExport("itemPng");
+            }
+
+            public function exportSelectedOutfitPng():void
+            {
+                prepareWebAssetExport("outfitPng");
+            }
+
+            public function exportSelectedOutfitGif():void
+            {
+                prepareWebAssetExport("outfitGif");
+            }
+
+            private function prepareWebAssetExport(mode:String):void
+            {
+                if (!clientLoaded || _locked)
+                    return;
+
+                var active:ThingList = getActiveThingList();
+                var selected:Vector.<ThingListItem> = active ? active.selectedThingItems : null;
+                if (!selected || selected.length != 1)
+                {
+                    Alert.show("Select exactly one object to export.", "Export PNG/GIF");
+                    return;
+                }
+
+                var item:ThingListItem = selected[0];
+                var expectedCategory:String = mode == "itemPng" ? ThingCategory.ITEM : ThingCategory.OUTFIT;
+                if (!item.thing || item.thing.category != expectedCategory)
+                {
+                    Alert.show(mode == "itemPng" ?
+                            "Select an item before exporting." :
+                            "Select an outfit before exporting.", "Export PNG/GIF");
+                    return;
+                }
+
+                if (mode == "itemPng" && item.serverId == 0)
+                {
+                    Alert.show("The selected item has no server ID in the loaded OTB.", "Export Item PNG");
+                    return;
+                }
+
+                _pendingWebExportMode = mode;
+                _pendingWebExportThingId = item.id;
+                _pendingWebExportServerId = item.serverId;
+
+                var data:ThingData = thingData;
+                if (data && data.id == item.id && data.category == expectedCategory)
+                {
+                    beginWebAssetExport(data, mode, item.serverId);
+                    clearPendingWebAssetExport();
+                }
+                else
+                {
+                    sendCommand(new GetThingCommand(item.id, expectedCategory));
+                }
+            }
+
+            private function clearPendingWebAssetExport():void
+            {
+                _pendingWebExportMode = null;
+                _pendingWebExportThingId = 0;
+                _pendingWebExportServerId = 0;
+            }
+
+            private function beginWebAssetExport(data:ThingData, mode:String, serverId:uint):void
+            {
+                if (!data || !data.thing)
+                    return;
+
+                var extension:String = mode == "outfitGif" ? "gif" : "png";
+                var outputId:uint = mode == "itemPng" ? serverId : data.id;
+                var directory:File = _settings.getIODirectory() || File.documentsDirectory;
+                var suggested:File = directory.resolvePath(outputId.toString() + "." + extension);
+                suggested.addEventListener(Event.SELECT, saveHandler);
+                suggested.browseForSave(mode == "itemPng" ?
+                        "Export item PNG using server ID" :
+                        "Export front outfit " + extension.toUpperCase());
+
+                function saveHandler(event:Event):void
+                {
+                    var file:File = event.target as File;
+                    file.removeEventListener(Event.SELECT, saveHandler);
+                    if (!file.extension || file.extension.toLowerCase() != extension)
+                        file = new File(file.nativePath + "." + extension);
+
+                    try
+                    {
+                        var bytes:ByteArray;
+                        if (mode == "outfitGif")
+                        {
+                            bytes = createOutfitGif(data);
+                        }
+                        else
+                        {
+                            var bitmap:BitmapData = mode == "itemPng" ?
+                                    createItemBitmap(data) : createOutfitPngBitmap(data);
+                            bytes = ImageCodec.encode(bitmap, ImageFormat.PNG);
+                            bitmap.dispose();
+                        }
+                        var stream:FileStream = new FileStream();
+                        stream.open(file, FileMode.WRITE);
+                        stream.writeBytes(bytes);
+                        stream.close();
+                        _settings.setIODirectory(file.parent);
+                        appendLog("Exported " + file.nativePath);
+                        Alert.show("Export completed:\n" + file.nativePath, "Export PNG/GIF");
+                    }
+                    catch (error:Error)
+                    {
+                        Alert.show(error.message, "Export PNG/GIF Error");
+                    }
+                }
+            }
+
+            private function createItemBitmap(data:ThingData):BitmapData
+            {
+                var frameGroup:FrameGroup = data.getFrameGroup(FrameGroupType.DEFAULT);
+                if (!frameGroup)
+                    frameGroup = data.getFrameGroup(FrameGroupType.WALKING);
+                if (!frameGroup)
+                    throw new Error("The selected item has no frame group.");
+                return renderThingFrame(data, frameGroup, 0, 0);
+            }
+
+            private function createOutfitPngBitmap(data:ThingData):BitmapData
+            {
+                var prepared:Object = prepareOutfit(data);
+                var bitmap:BitmapData = renderThingFrame(prepared.data, prepared.group, 2, 0);
+                var canvas:BitmapData = placeOutfitOnCanvas(bitmap);
+                bitmap.dispose();
+                return canvas;
+            }
+
+            private function createOutfitGif(data:ThingData):ByteArray
+            {
+                var prepared:Object = prepareOutfit(data);
+                var frameGroup:FrameGroup = prepared.group;
+                var frames:Vector.<BitmapData> = new Vector.<BitmapData>();
+                var delays:Vector.<uint> = new Vector.<uint>();
+
+                for (var frame:uint = 0; frame < frameGroup.frames; frame++)
+                {
+                    var bitmap:BitmapData = renderThingFrame(prepared.data, frameGroup, 2, frame);
+                    frames.push(placeOutfitOnCanvas(bitmap));
+                    bitmap.dispose();
+
+                    var frameDuration:FrameDuration = frameGroup.getFrameDuration(frame);
+                    var delay:uint = frameDuration ?
+                            Math.round((frameDuration.minimum + frameDuration.maximum) / 2) : 100;
+                    delays.push(Math.max(20, delay));
+                }
+
+                var encoded:ByteArray;
+                try
+                {
+                    encoded = AnimatedGifEncoder.encode(frames, delays);
+                }
+                finally
+                {
+                    for each (var gifFrame:BitmapData in frames)
+                        gifFrame.dispose();
+                }
+                return encoded;
+            }
+
+            private function prepareOutfit(data:ThingData):Object
+            {
+                var groupType:uint = FrameGroupType.WALKING;
+                var sourceGroup:FrameGroup = data.getFrameGroup(groupType);
+                if (!sourceGroup || sourceGroup.frames <= 1)
+                {
+                    groupType = FrameGroupType.DEFAULT;
+                    sourceGroup = data.getFrameGroup(groupType);
+                }
+                if (!sourceGroup)
+                    throw new Error("The selected outfit has no frame group.");
+
+                var colors:OutfitData = thingView.outfitData ?
+                        thingView.outfitData.clone() : new OutfitData();
+                var colored:ThingData = data.clone().colorize(colors);
+                return {data: colored, group: colored.getFrameGroup(groupType)};
+            }
+
+            private function renderThingFrame(data:ThingData,
+                    frameGroup:FrameGroup,
+                    patternX:uint,
+                    frame:uint):BitmapData
+            {
+                var width:uint = frameGroup.width * SpriteExtent.DEFAULT_SIZE;
+                var height:uint = frameGroup.height * SpriteExtent.DEFAULT_SIZE;
+                var result:BitmapData = new BitmapData(width, height, true, 0);
+                var point:Point = new Point();
+                var px:uint = frameGroup.patternX > patternX ? patternX : 0;
+
+                for (var layer:uint = 0; layer < frameGroup.layers; layer++)
+                {
+                    var layerBitmap:BitmapData = data.getBitmap(frameGroup, layer, px, 0, 0, frame);
+                    if (layerBitmap)
+                    {
+                        result.copyPixels(layerBitmap, layerBitmap.rect, point, null, null, true);
+                        layerBitmap.dispose();
+                    }
+                }
+                return result;
+            }
+
+            private function placeOutfitOnCanvas(source:BitmapData):BitmapData
+            {
+                const canvasWidth:uint = 64;
+                const canvasHeight:uint = 128;
+                var canvas:BitmapData = new BitmapData(canvasWidth, canvasHeight, true, 0);
+                var scale:Number = Math.min(1, canvasWidth / source.width, canvasHeight / source.height);
+                var drawWidth:Number = Math.round(source.width * scale);
+                var drawHeight:Number = Math.round(source.height * scale);
+                var x:Number = Math.floor((canvasWidth - drawWidth) / 2);
+                var y:Number = canvasHeight - drawHeight;
+
+                if (scale == 1)
+                {
+                    canvas.copyPixels(source, source.rect, new Point(x, y), null, null, true);
+                }
+                else
+                {
+                    var matrix:Matrix = new Matrix(scale, 0, 0, scale, x, y);
+                    canvas.draw(source, matrix, null, null, null, false);
+                }
+                return canvas;
+            }
+
+            private function pushHistory(entry:Object):void
+            {
+                if (_historyReplaying || !entry)
+                    return;
+
+                _undoHistory.push(entry);
+                if (_undoHistory.length > HISTORY_LIMIT)
+                    _undoHistory.shift();
+                _redoHistory.length = 0;
+            }
+
+            private function sendThingUpdateWithHistory(data:ThingData, replaceSprites:Boolean):void
+            {
+                if (!data)
+                    return;
+
+                if (!_historyReplaying && _editOriginalThingData)
+                {
+                    pushHistory({kind: "thing",
+                            before: _editOriginalThingData.clone(),
+                            after: data.clone(),
+                            replaceSprites: replaceSprites});
+                }
+
+                _editOriginalThingData = data.clone();
+                sendCommand(new UpdateThingCommand(data, replaceSprites));
+            }
+
+            private function pushSpriteHistory(before:Vector.<SpriteData>, after:Vector.<SpriteData>):void
+            {
+                if (!before || !after || before.length == 0 || before.length != after.length)
+                    return;
+
+                var beforeCopy:Vector.<SpriteData> = new Vector.<SpriteData>();
+                var afterCopy:Vector.<SpriteData> = new Vector.<SpriteData>();
+                for each (var oldSprite:SpriteData in before)
+                    beforeCopy.push(oldSprite.clone());
+                for each (var newSprite:SpriteData in after)
+                    afterCopy.push(newSprite.clone());
+                pushHistory({kind: "sprite", before: beforeCopy, after: afterCopy});
+            }
+
+            public function undoLastChange():void
+            {
+                if (!canUndo || !clientLoaded)
+                    return;
+
+                var entry:Object = _undoHistory.pop();
+                _redoHistory.push(entry);
+                applyHistoryEntry(entry, true);
+            }
+
+            public function redoLastChange():void
+            {
+                if (!canRedo || !clientLoaded)
+                    return;
+
+                var entry:Object = _redoHistory.pop();
+                _undoHistory.push(entry);
+                applyHistoryEntry(entry, false);
+            }
+
+            private function applyHistoryEntry(entry:Object, useBefore:Boolean):void
+            {
+                if (!entry)
+                    return;
+
+                _historyReplaying = true;
+                var value:Object = useBefore ? entry.before : entry.after;
+                if (entry.kind == "thing" && value is ThingData)
+                {
+                    var restored:ThingData = ThingData(value).clone();
+                    _editOriginalThingData = restored.clone();
+                    sendCommand(new UpdateThingCommand(restored, Boolean(entry.replaceSprites)));
+                }
+                else if (entry.kind == "sprite" && value is Vector.<SpriteData>)
+                {
+                    var restoredSprites:Vector.<SpriteData> = new Vector.<SpriteData>();
+                    for each (var sprite:SpriteData in Vector.<SpriteData>(value))
+                        restoredSprites.push(sprite.clone());
+                    sendCommand(new ReplaceSpritesCommand(restoredSprites));
+                }
+                _historyReplaying = false;
             }
             
             private function restoreFrameGroupSelection(groupType:uint):void
@@ -1335,6 +1773,7 @@ THE SOFTWARE.
                 _communicator.registerCallback(UpdateThingPropertiesCommand, updateThingPropertiesCallback);
                 _communicator.registerCallback(SetSpriteListCommand, setSpriteListCallback);
                 _communicator.registerCallback(NeedToReloadCommand, needToReloadCallback);
+                _communicator.registerCallback(MergePreviewResultCommand, mergePreviewResultCallback);
             }
             
             // --------------------------------------
@@ -1640,6 +2079,15 @@ THE SOFTWARE.
                     _pendingEditThing = false;
                     editThing(thingData);
                 }
+
+                if (_pendingWebExportMode &&
+                        thingData.id == _pendingWebExportThingId)
+                {
+                    var exportMode:String = _pendingWebExportMode;
+                    var exportServerId:uint = _pendingWebExportServerId;
+                    clearPendingWebAssetExport();
+                    beginWebAssetExport(thingData, exportMode, exportServerId);
+                }
             }
             
             private function updateThingPropertiesCallback(thing:ThingType):void
@@ -1843,6 +2291,36 @@ THE SOFTWARE.
                     }
                 }
             }
+
+            private function openPixelEditor():void
+            {
+                if (!clientLoaded || !activeSpriteList || activeSpriteList.multipleSelected)
+                    return;
+
+                var original:SpriteData = activeSpriteList.selectedSprite;
+                if (!original)
+                    return;
+
+                var sourceBitmap:BitmapData = original.getBitmap();
+                if (!sourceBitmap)
+                    return;
+
+                var window:PixelEditorWindow = new PixelEditorWindow();
+                window.source = sourceBitmap;
+                sourceBitmap.dispose();
+                window.addEventListener(Event.CLOSE, closeHandler);
+                window.open(this);
+
+                function closeHandler(event:Event):void
+                {
+                    if (window.detail == DialogDetail.OK && window.pixels)
+                    {
+                        var updated:SpriteData = SpriteData.createSpriteData(original.id, window.pixels);
+                        pushSpriteHistory(Vector.<SpriteData>([original]), Vector.<SpriteData>([updated]));
+                        sendCommand(new ReplaceSpritesCommand(Vector.<SpriteData>([updated])));
+                    }
+                }
+            }
             
             private function openLookGenerator():void
             {
@@ -1913,6 +2391,7 @@ THE SOFTWARE.
             private function editThing(data:ThingData):void
             {
                 thingTypeEditor.thingData = data;
+                _editOriginalThingData = data ? data.clone() : null;
                 thingTypeEditor.visible = (data != null);
                 confirmButton.enabled = thingTypeEditor.changed;
                 cancelButton.enabled = (data != null);
@@ -2393,7 +2872,7 @@ THE SOFTWARE.
 
                     if (forceReplaceSprites)
                     {
-                        sendCommand(new UpdateThingCommand(thingData, true));
+                        sendThingUpdateWithHistory(thingData, true);
                         return;
                     }
 
@@ -2411,10 +2890,10 @@ THE SOFTWARE.
                     function closeHandler(event:CloseEvent):void
                     {
                         if (thingTypeEditor && thingTypeEditor.thingData)
-                            sendCommand(new UpdateThingCommand(thingTypeEditor.thingData, (event.detail == Alert.YES)));
+                            sendThingUpdateWithHistory(thingTypeEditor.thingData, (event.detail == Alert.YES));
                     }
 
-                    sendCommand(new UpdateThingCommand(thingData, false));
+                    sendThingUpdateWithHistory(thingData, false);
                 }
             }
             
@@ -3929,6 +4408,34 @@ THE SOFTWARE.
                     case Menu.TOOLS_RELOAD_ITEM_ATTRIBUTES:
                         reloadItemAttributes();
                         break;
+
+                    case Menu.TOOLS_UNDO:
+                        undoLastChange();
+                        break;
+
+                    case Menu.TOOLS_REDO:
+                        redoLastChange();
+                        break;
+
+                    case Menu.TOOLS_RME_BRUSH_BUILDER:
+                        openRmeBrushBuilder();
+                        break;
+
+                    case Menu.TOOLS_MODERN_ASSETS:
+                        openModernAssetsImporter();
+                        break;
+
+                    case Menu.TOOLS_EXPORT_ITEM_PNG:
+                        exportSelectedItemPngByServerId();
+                        break;
+
+                    case Menu.TOOLS_EXPORT_OUTFIT_PNG:
+                        exportSelectedOutfitPng();
+                        break;
+
+                    case Menu.TOOLS_EXPORT_OUTFIT_GIF:
+                        exportSelectedOutfitGif();
+                        break;
             
                     case Menu.WINDOW_LOG:
                         toggleLogPanel();
@@ -4832,6 +5339,12 @@ THE SOFTWARE.
                         height="22"
                         icon="{Assets.REPLACE}"
                         click="replaceSpriteHandler(event)"/>
+                    <s:Button id="editPixelButton"
+                        toolTip="Edit pixels"
+                        width="28"
+                        height="22"
+                        label="Px"
+                        click="openPixelEditor()"/>
                     <s:Button id="importSpriteButton"
                         toolTip="@Resource(key='import', bundle='strings')"
                         width="22"

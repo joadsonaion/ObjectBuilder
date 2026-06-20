@@ -70,6 +70,7 @@ package
     import ob.commands.files.CreateNewFilesCommand;
     import ob.commands.files.LoadFilesCommand;
     import ob.commands.files.MergeFilesCommand;
+    import ob.commands.files.MergePreviewResultCommand;
     import ob.commands.files.UnloadFilesCommand;
     import ob.commands.sprites.ExportSpritesCommand;
     import ob.commands.sprites.FindSpritesCommand;
@@ -568,7 +569,8 @@ package
                 version:Version,
                 features:ClientFeatures,
                 reuseExistingSprites:Boolean = true,
-                mergeMode:String = "all"):void
+                mergeMode:String = "all",
+                previewOnly:Boolean = false):void
         {
             if (isNullOrEmpty(datPath))
                 throw new NullOrEmptyArgumentError("datPath");
@@ -595,7 +597,8 @@ package
                     mergeFeatures,
                     true,
                     reuseExistingSprites,
-                    mergeMode);
+                    mergeMode,
+                    previewOnly);
 
             function progressHandler(event:ProgressEvent):void
             {
@@ -604,6 +607,23 @@ package
 
             function completeHandler(event:Event):void
             {
+                if (previewOnly)
+                {
+                    sendCommand(new MergePreviewResultCommand(
+                            merger.itemsCount,
+                            merger.outfitsCount,
+                            merger.effectsCount,
+                            merger.missilesCount,
+                            merger.spritesCount,
+                            merger.reusedSpritesCount,
+                            merger.skippedObjectsCount,
+                            merger.sourceReferencedSpritesCount,
+                            merger.ignoredOrphanSpritesCount,
+                            merger.sourceObjectsCount));
+                    sendCommand(new HideProgressBarCommand(ProgressBarID.DEFAULT));
+                    return;
+                }
+
                 if (!_things || !_sprites)
                 {
                     sendCommand(new HideProgressBarCommand(ProgressBarID.DEFAULT));
@@ -868,15 +888,24 @@ package
             var otbMaxClientId:uint = _items.items.getMaxClientId();
             Log.info(Resources.getString("logCreateMissingItems", maxClientId, otbMaxClientId, _items.items.count));
 
-            var created:uint = _items.createMissingItems(maxClientId);
+            var missingClientIds:Array = [];
+            for (var scanId:uint = ThingTypeStorage.MIN_ITEM_ID; scanId <= maxClientId; scanId++)
+            {
+                var sourceThing:ThingType = _things.getItemType(scanId);
+                if (sourceThing && !ThingUtils.isEmpty(sourceThing) && !_items.getItemByClientId(scanId))
+                    missingClientIds.push(scanId);
+            }
+
+            var created:uint = _items.createMissingItems(maxClientId, missingClientIds);
             Log.info(Resources.getString("logCreatedOtbItems", created));
 
             if (created > 0)
             {
                 // Determine missing items to sync
                 var itemsToSync:Array = [];
-                for (var cid:uint = otbMaxClientId + 1; cid <= maxClientId; cid++)
+                for each (var missingId:Object in missingClientIds)
                 {
+                    var cid:uint = uint(missingId);
                     var serverItem:ServerItem = _items.getItemByClientId(cid);
                     if (serverItem)
                     {

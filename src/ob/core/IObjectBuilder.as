@@ -60,6 +60,13 @@ package ob.core
         function get clientIsTemporary():Boolean;
         function get clientLoaded():Boolean;
         function get otbLoaded():Boolean;
+        function get canUndo():Boolean;
+        function get canRedo():Boolean;
+        function undoLastChange():void;
+        function redoLastChange():void;
+        function exportSelectedItemPngByServerId():void;
+        function exportSelectedOutfitPng():void;
+        function exportSelectedOutfitGif():void;
 
         function createNewProject():void;
         function openProject(directory:File = null):void;

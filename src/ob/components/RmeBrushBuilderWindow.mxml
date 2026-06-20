@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mg:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009"
+    xmlns:s="library://ns.adobe.com/flex/spark"
+    xmlns:mg="library://ns.mignari.com/mg"
+    width="540" height="390" fontSize="11" title="RME Brush Builder"
+    creationComplete="creationCompleteHandler(event)">
+
+    <fx:Script>
+        <![CDATA[
+            import flash.events.Event;
+            import flash.filesystem.File;
+
+            import mx.collections.ArrayList;
+            import mx.events.FlexEvent;
+
+            import nail.components.controls.Alert;
+
+            import ob.utils.RmeBrushWriter;
+            import otlib.utils.ThingListItem;
+
+            public var selectedItems:Vector.<ThingListItem>;
+
+            private function creationCompleteHandler(event:FlexEvent):void
+            {
+                countLabel.text = (selectedItems ? selectedItems.length : 0) + " selected item(s)";
+                typeList.dataProvider = new ArrayList([
+                    {label: "Ground", value: "ground"},
+                    {label: "Border (12)", value: "border"},
+                    {label: "Wall (4)", value: "wall"},
+                    {label: "Doodad", value: "doodad"},
+                    {label: "Carpet (13)", value: "carpet"},
+                    {label: "Table (7)", value: "table"}
+                ]);
+                typeList.selectedIndex = 0;
+            }
+
+            private function browseHandler():void
+            {
+                var directory:File = folderInput.text.length ? new File(folderInput.text) : File.documentsDirectory;
+                directory.addEventListener(Event.SELECT, function(event:Event):void
+                    {
+                        folderInput.text = directory.nativePath;
+                    });
+                directory.browseForDirectory("Select RME data/version folder");
+            }
+
+            private function generateHandler():void
+            {
+                try
+                {
+                    var directory:File = new File(folderInput.text);
+                    var result:String = RmeBrushWriter.write(directory,
+                            typeList.selectedItem.value,
+                            nameInput.text,
+                            tilesetInput.text,
+                            selectedItems);
+                    Alert.show(result, "RME Brush Builder");
+                    close();
+                }
+                catch (error:Error)
+                {
+                    Alert.show(error.message, "RME Brush Builder");
+                }
+            }
+        ]]>
+    </fx:Script>
+
+    <mg:layout><s:VerticalLayout/></mg:layout>
+    <s:VGroup width="100%" height="100%" padding="12" gap="10">
+        <s:Label id="countLabel" fontWeight="bold"/>
+        <s:Label width="100%" text="Uses Server IDs from the loaded OTB. Selection order defines border, wall, carpet and table positions."/>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="90" text="RME folder"/>
+            <s:TextInput id="folderInput" width="100%"/>
+            <s:Button label="Browse" click="browseHandler()"/>
+        </s:HGroup>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="90" text="Type"/>
+            <s:DropDownList id="typeList" width="180" labelField="label"/>
+        </s:HGroup>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="90" text="Brush name"/>
+            <s:TextInput id="nameInput" width="100%"/>
+        </s:HGroup>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="90" text="Tileset"/>
+            <s:TextInput id="tilesetInput" width="100%" text="Custom"/>
+        </s:HGroup>
+        <s:Spacer height="100%"/>
+    </s:VGroup>
+    <s:BorderContainer width="100%" skinClass="com.mignari.skins.PixeledBorderContainerSkin">
+        <s:layout><s:HorizontalLayout padding="10" gap="8" horizontalAlign="right"/></s:layout>
+        <s:Button label="Generate" click="generateHandler()"/>
+        <s:Button label="Cancel" click="close()"/>
+    </s:BorderContainer>
+</mg:TitleWindow>

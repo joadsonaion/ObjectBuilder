@@ -40,14 +40,16 @@ package ob.commands.files
                 version:Version,
                 features:ClientFeatures,
                 reuseExistingSprites:Boolean = true,
-                mergeMode:String = "all")
+                mergeMode:String = "all",
+                previewOnly:Boolean = false)
         {
             super(datFile.nativePath,
                     sprFile.nativePath,
                     version,
                     features,
                     reuseExistingSprites,
-                    mergeMode);
+                    mergeMode,
+                    previewOnly);
         }
     }
 }

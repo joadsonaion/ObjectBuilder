@@ -301,6 +301,49 @@ package ob.menu
             toolsReloadItemAttributes.data = TOOLS_RELOAD_ITEM_ATTRIBUTES;
             toolsMenu.addMenuItem(toolsReloadItemAttributes);
 
+            toolsMenu.addMenuItem(separator);
+
+            var toolsUndo:MenuItem = new MenuItem();
+            toolsUndo.label = "Undo";
+            toolsUndo.data = TOOLS_UNDO;
+            toolsUndo.keyEquivalent = "Z";
+            toolsUndo.controlKey = true;
+            toolsMenu.addMenuItem(toolsUndo);
+
+            var toolsRedo:MenuItem = new MenuItem();
+            toolsRedo.label = "Redo";
+            toolsRedo.data = TOOLS_REDO;
+            toolsRedo.keyEquivalent = "Y";
+            toolsRedo.controlKey = true;
+            toolsMenu.addMenuItem(toolsRedo);
+
+            var toolsRmeBrushBuilder:MenuItem = new MenuItem();
+            toolsRmeBrushBuilder.label = "RME Brush Builder";
+            toolsRmeBrushBuilder.data = TOOLS_RME_BRUSH_BUILDER;
+            toolsMenu.addMenuItem(toolsRmeBrushBuilder);
+
+            var toolsModernAssets:MenuItem = new MenuItem();
+            toolsModernAssets.label = "Import Assets 12+/15.x";
+            toolsModernAssets.data = TOOLS_MODERN_ASSETS;
+            toolsMenu.addMenuItem(toolsModernAssets);
+
+            toolsMenu.addMenuItem(separator);
+
+            var toolsExportItemPng:MenuItem = new MenuItem();
+            toolsExportItemPng.label = "Export Item PNG (Server ID)";
+            toolsExportItemPng.data = TOOLS_EXPORT_ITEM_PNG;
+            toolsMenu.addMenuItem(toolsExportItemPng);
+
+            var toolsExportOutfitPng:MenuItem = new MenuItem();
+            toolsExportOutfitPng.label = "Export Front Outfit PNG";
+            toolsExportOutfitPng.data = TOOLS_EXPORT_OUTFIT_PNG;
+            toolsMenu.addMenuItem(toolsExportOutfitPng);
+
+            var toolsExportOutfitGif:MenuItem = new MenuItem();
+            toolsExportOutfitGif.label = "Export Front Outfit GIF";
+            toolsExportOutfitGif.data = TOOLS_EXPORT_OUTFIT_GIF;
+            toolsMenu.addMenuItem(toolsExportOutfitGif);
+
             // Window
             var windowMenu:MenuItem = new MenuItem();
             windowMenu.label = Resources.getString("menu.window");
@@ -425,11 +468,22 @@ package ob.menu
                 // menu Tools > Bulk Replace
                 nativeMenu.items[3].submenu.items[8].enabled = m_application.clientLoaded;
 
+                // menu Tools > Bulk Replace Map Objects
+                nativeMenu.items[3].submenu.items[9].enabled = m_application.clientLoaded;
+
                 // menu Tools > Create Missing OTB Items
-                nativeMenu.items[3].submenu.items[10].enabled = m_application.otbLoaded;
+                nativeMenu.items[3].submenu.items[11].enabled = m_application.clientLoaded && m_application.otbLoaded;
 
                 // menu Tools > Reload Item Attributes
-                nativeMenu.items[3].submenu.items[11].enabled = m_application.otbLoaded;
+                nativeMenu.items[3].submenu.items[12].enabled = m_application.clientLoaded && m_application.otbLoaded;
+
+                nativeMenu.items[3].submenu.items[14].enabled = m_application.canUndo;
+                nativeMenu.items[3].submenu.items[15].enabled = m_application.canRedo;
+                nativeMenu.items[3].submenu.items[16].enabled = m_application.clientLoaded && m_application.otbLoaded;
+                nativeMenu.items[3].submenu.items[17].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[19].enabled = m_application.clientLoaded && m_application.otbLoaded;
+                nativeMenu.items[3].submenu.items[20].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[21].enabled = m_application.clientLoaded;
             }
             else
             {
@@ -460,11 +514,22 @@ package ob.menu
                 // menu Tools > Bulk Replace
                 nativeMenu.items[2].submenu.items[8].enabled = m_application.clientLoaded;
 
+                // menu Tools > Bulk Replace Map Objects
+                nativeMenu.items[2].submenu.items[9].enabled = m_application.clientLoaded;
+
                 // menu Tools > Create Missing OTB Items
-                nativeMenu.items[2].submenu.items[10].enabled = m_application.otbLoaded;
+                nativeMenu.items[2].submenu.items[11].enabled = m_application.clientLoaded && m_application.otbLoaded;
 
                 // menu Tools > Reload Item Attributes
-                nativeMenu.items[2].submenu.items[11].enabled = m_application.otbLoaded;
+                nativeMenu.items[2].submenu.items[12].enabled = m_application.clientLoaded && m_application.otbLoaded;
+
+                nativeMenu.items[2].submenu.items[14].enabled = m_application.canUndo;
+                nativeMenu.items[2].submenu.items[15].enabled = m_application.canRedo;
+                nativeMenu.items[2].submenu.items[16].enabled = m_application.clientLoaded && m_application.otbLoaded;
+                nativeMenu.items[2].submenu.items[17].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[19].enabled = m_application.clientLoaded && m_application.otbLoaded;
+                nativeMenu.items[2].submenu.items[20].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[21].enabled = m_application.clientLoaded;
             }
         }
 
@@ -480,7 +545,16 @@ package ob.menu
             var ev:MenuEvent;
             var code:uint = event.keyCode;
 
-            if (m_isMac)
+            if (event.ctrlKey && code == Keyboard.Z)
+            {
+                ev = new MenuEvent(MenuEvent.SELECTED, TOOLS_UNDO);
+            }
+            else if (event.ctrlKey && code == Keyboard.Y)
+            {
+                ev = new MenuEvent(MenuEvent.SELECTED, TOOLS_REDO);
+            }
+
+            if (!ev && m_isMac)
             {
                 if (event.ctrlKey && !event.shiftKey)
                 {
@@ -529,7 +603,7 @@ package ob.menu
                     }
                 }
             }
-            else if (!event.ctrlKey && !event.shiftKey)
+            else if (!ev && !event.ctrlKey && !event.shiftKey)
             {
                 switch (code)
                 {
@@ -597,6 +671,13 @@ package ob.menu
         public static const VIEW_SHOW_OBJECTS_GRID:String = "viewShowObjectsGrid";
         public static const TOOLS_CREATE_MISSING_ITEMS:String = "toolsCreateMissingItems";
         public static const TOOLS_RELOAD_ITEM_ATTRIBUTES:String = "toolsReloadItemAttributes";
+        public static const TOOLS_UNDO:String = "toolsUndo";
+        public static const TOOLS_REDO:String = "toolsRedo";
+        public static const TOOLS_RME_BRUSH_BUILDER:String = "toolsRmeBrushBuilder";
+        public static const TOOLS_MODERN_ASSETS:String = "toolsModernAssets";
+        public static const TOOLS_EXPORT_ITEM_PNG:String = "toolsExportItemPng";
+        public static const TOOLS_EXPORT_OUTFIT_PNG:String = "toolsExportOutfitPng";
+        public static const TOOLS_EXPORT_OUTFIT_GIF:String = "toolsExportOutfitGif";
         public static const FILE_NEW_WINDOW:String = "fileNewWindow";
     }
 }

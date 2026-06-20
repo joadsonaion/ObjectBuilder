@@ -259,7 +259,14 @@ package otlib.sprites
                 return _hash;
 
             if (_compressedPixels.length != 0)
-                _hash = MD5.hashBytes(_compressedPixels);
+            {
+                // RLE can encode the same visible sprite in different byte layouts.
+                // Hash decoded ARGB pixels so deduplication is based on the image.
+                var pixels:ByteArray = getPixels();
+                pixels.position = 0;
+                _hash = MD5.hashBytes(pixels);
+                pixels.clear();
+            }
 
             return _hash;
         }

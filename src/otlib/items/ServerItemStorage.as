@@ -396,7 +396,7 @@ package otlib.items
          * @param maxClientId Maximum client ID from DAT file
          * @return Number of items created
          */
-        public function createMissingItems(maxClientId:uint):uint
+        public function createMissingItems(maxClientId:uint, clientIds:Array = null):uint
         {
             if (!_loaded || !_items)
             {
@@ -404,7 +404,7 @@ package otlib.items
                 return 0;
             }
 
-            var created:uint = _items.createMissingItems(maxClientId);
+            var created:uint = _items.createMissingItems(maxClientId, clientIds);
             if (created > 0)
             {
                 _changed = true;

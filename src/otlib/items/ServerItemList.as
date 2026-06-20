@@ -243,33 +243,32 @@ package otlib.items
          * @param maxClientId Maximum client ID from tibia.dat
          * @return Number of items created
          */
-        public function createMissingItems(maxClientId:uint):uint
+        public function createMissingItems(maxClientId:uint, clientIds:Array = null, minClientId:uint = 100):uint
         {
-            var lastClientId:uint = 0;
-
-            // Find the highest client ID currently in use
-            for each (var item:ServerItem in _items)
+            var created:uint = 0;
+            var ids:Array = clientIds;
+            if (!ids)
             {
-                if (item.clientId > lastClientId)
-                    lastClientId = item.clientId;
+                ids = [];
+                for (var scanId:uint = minClientId; scanId <= maxClientId; scanId++)
+                    ids.push(scanId);
             }
 
-            var created:uint = 0;
-
-            // Create items for missing client IDs
-            if (lastClientId < maxClientId)
+            // Scan the full DAT range, including gaps below the largest OTB client ID.
+            for each (var value:Object in ids)
             {
-                for (var cid:uint = lastClientId + 1; cid <= maxClientId; cid++)
-                {
-                    var newItem:ServerItem = new ServerItem();
-                    newItem.id = _maxId + 1;
-                    newItem.clientId = cid;
-                    newItem.spriteHash = new flash.utils.ByteArray();
-                    newItem.spriteHash.length = 16;
+                var cid:uint = uint(value);
+                if (cid < minClientId || cid > maxClientId || hasClientId(cid))
+                    continue;
 
-                    add(newItem);
-                    created++;
-                }
+                var newItem:ServerItem = new ServerItem();
+                newItem.id = _maxId + 1;
+                newItem.clientId = cid;
+                newItem.spriteHash = new flash.utils.ByteArray();
+                newItem.spriteHash.length = 16;
+
+                add(newItem);
+                created++;
             }
 
             return created;

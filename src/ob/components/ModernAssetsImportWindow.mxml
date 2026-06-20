@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mg:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009"
+    xmlns:s="library://ns.adobe.com/flex/spark"
+    xmlns:mg="library://ns.mignari.com/mg"
+    width="540" height="370" fontSize="11" title="Import Assets 12+/15.x"
+    creationComplete="creationCompleteHandler(event)">
+
+    <fx:Script>
+        <![CDATA[
+            import flash.events.Event;
+            import flash.filesystem.File;
+
+            import mx.collections.ArrayList;
+            import mx.events.FlexEvent;
+
+            import nail.components.controls.Alert;
+            import com.mignari.utils.DialogDetail;
+
+            import ob.utils.ModernAssetsImporter;
+            import otlib.things.ThingCategory;
+            import otlib.things.ThingData;
+
+            public var clientVersion:uint;
+            public var importedThings:Vector.<ThingData>;
+            private var m_detail:uint = DialogDetail.CANCEL;
+
+            public function get detail():uint { return m_detail; }
+
+            private function creationCompleteHandler(event:FlexEvent):void
+            {
+                categoryList.dataProvider = new ArrayList([
+                    {label: "Items", value: ThingCategory.ITEM, min: 100},
+                    {label: "Outfits", value: ThingCategory.OUTFIT, min: 1},
+                    {label: "Effects", value: ThingCategory.EFFECT, min: 1},
+                    {label: "Missiles", value: ThingCategory.MISSILE, min: 1}
+                ]);
+                categoryList.selectedIndex = 0;
+                categoryChanged();
+            }
+
+            private function categoryChanged():void
+            {
+                if (!categoryList.selectedItem) return;
+                fromStepper.value = categoryList.selectedItem.min;
+                toStepper.value = categoryList.selectedItem.min + 99;
+            }
+
+            private function browseHandler():void
+            {
+                var directory:File = folderInput.text.length ? new File(folderInput.text) : File.documentsDirectory;
+                directory.addEventListener(Event.SELECT, function(event:Event):void
+                    {
+                        folderInput.text = directory.nativePath;
+                    });
+                directory.browseForDirectory("Select folder containing catalog-content.json");
+            }
+
+            private function importHandler():void
+            {
+                importButton.enabled = false;
+                statusLabel.text = "Reading appearances and sprite sheets...";
+                callLater(runImport);
+            }
+
+            private function runImport():void
+            {
+                try
+                {
+                    importedThings = ModernAssetsImporter.importRange(new File(folderInput.text),
+                            categoryList.selectedItem.value,
+                            uint(fromStepper.value),
+                            uint(toStepper.value),
+                            clientVersion);
+                    if (!importedThings || importedThings.length == 0)
+                        throw new Error("No appearances were found in the selected range.");
+                    m_detail = DialogDetail.OK;
+                    close();
+                }
+                catch (error:Error)
+                {
+                    statusLabel.text = error.message;
+                    Alert.show(error.message, "Import Assets 12+/15.x");
+                    importButton.enabled = true;
+                }
+            }
+        ]]>
+    </fx:Script>
+
+    <mg:layout><s:VerticalLayout/></mg:layout>
+    <s:VGroup width="100%" height="100%" padding="12" gap="10">
+        <s:Label width="100%" text="Converts catalog appearances and BMP/LZMA sheets into objects and 32x32 sprites in the currently open client."/>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="100" text="Assets folder"/>
+            <s:TextInput id="folderInput" width="100%"/>
+            <s:Button label="Browse" click="browseHandler()"/>
+        </s:HGroup>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="100" text="Category"/>
+            <s:DropDownList id="categoryList" width="180" labelField="label" change="categoryChanged()"/>
+        </s:HGroup>
+        <s:HGroup width="100%" verticalAlign="middle">
+            <s:Label width="100" text="Appearance IDs"/>
+            <s:NumericStepper id="fromStepper" minimum="1" maximum="1000000" width="110"/>
+            <s:Label text="to"/>
+            <s:NumericStepper id="toStepper" minimum="1" maximum="1000000" width="110"/>
+        </s:HGroup>
+        <s:Label id="statusLabel" width="100%"/>
+        <s:Spacer height="100%"/>
+    </s:VGroup>
+    <s:BorderContainer width="100%" skinClass="com.mignari.skins.PixeledBorderContainerSkin">
+        <s:layout><s:HorizontalLayout padding="10" gap="8" horizontalAlign="right"/></s:layout>
+        <s:Button id="importButton" label="Import" click="importHandler()"/>
+        <s:Button label="Cancel" click="close()"/>
+    </s:BorderContainer>
+</mg:TitleWindow>

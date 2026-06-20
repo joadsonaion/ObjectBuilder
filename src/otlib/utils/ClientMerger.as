@@ -67,7 +67,11 @@ package otlib.utils
         private var m_spritesCount:uint;
         private var m_reusedSpritesCount:uint;
         private var m_skippedObjectsCount:uint;
+        private var m_sourceObjectsCount:uint;
+        private var m_sourceReferencedSpritesCount:uint;
+        private var m_ignoredOrphanSpritesCount:uint;
         private var m_reuseExistingSprites:Boolean;
+        private var m_previewOnly:Boolean;
         private var m_mergeMode:String;
         private var m_existingSpriteIds:Dictionary;
         private var m_currentSpriteHashes:Dictionary;
@@ -111,6 +115,18 @@ package otlib.utils
         {
             return m_skippedObjectsCount;
         }
+        public function get sourceObjectsCount():uint
+        {
+            return m_sourceObjectsCount;
+        }
+        public function get sourceReferencedSpritesCount():uint
+        {
+            return m_sourceReferencedSpritesCount;
+        }
+        public function get ignoredOrphanSpritesCount():uint
+        {
+            return m_ignoredOrphanSpritesCount;
+        }
 
         // --------------------------------------------------------------------------
         // CONSTRUCTOR
@@ -146,7 +162,8 @@ package otlib.utils
                 features:ClientFeatures,
                 optimizeSprites:Boolean = true,
                 reuseExistingSprites:Boolean = true,
-                mergeMode:String = "all"):void
+                mergeMode:String = "all",
+                previewOnly:Boolean = false):void
         {
             if (!datFile)
                 throw new NullArgumentError("datFile");
@@ -165,8 +182,17 @@ package otlib.utils
 
             m_reuseExistingSprites = reuseExistingSprites;
             m_mergeMode = mergeMode ? mergeMode : ClientMergeMode.ALL;
+            m_previewOnly = previewOnly;
             m_reusedSpritesCount = 0;
             m_skippedObjectsCount = 0;
+            m_sourceObjectsCount = 0;
+            m_sourceReferencedSpritesCount = 0;
+            m_ignoredOrphanSpritesCount = 0;
+            m_itemsCount = 0;
+            m_outfitsCount = 0;
+            m_effectsCount = 0;
+            m_missilesCount = 0;
+            m_spritesCount = 0;
             m_objects = new ThingTypeStorage(m_settings);
             m_objects.addEventListener(ErrorEvent.ERROR, errorHandler);
 
@@ -243,15 +269,18 @@ package otlib.utils
             mergeObjectList(m_objects.missiles, ThingCategory.MISSILE, 1, m_objects.missilesCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 5, 5));
 
-            m_itemsCount = m_currentObjects.itemsCount - oldItemsCount;
-            m_outfitsCount = m_currentObjects.outfitsCount - oldOutfitsCount;
-            m_effectsCount = m_currentObjects.effectsCount - oldEffectsCount;
-            m_missilesCount = m_currentObjects.missilesCount - oldMissilesCount;
-            m_spritesCount = m_currentSprites.spritesCount - oldSpritesCount;
+            if (!m_previewOnly)
+            {
+                m_itemsCount = m_currentObjects.itemsCount - oldItemsCount;
+                m_outfitsCount = m_currentObjects.outfitsCount - oldOutfitsCount;
+                m_effectsCount = m_currentObjects.effectsCount - oldEffectsCount;
+                m_missilesCount = m_currentObjects.missilesCount - oldMissilesCount;
+                m_spritesCount = m_currentSprites.spritesCount - oldSpritesCount;
+            }
 
-            if (m_itemsCount || m_outfitsCount || m_effectsCount || m_missilesCount)
+            if (!m_previewOnly && (m_itemsCount || m_outfitsCount || m_effectsCount || m_missilesCount))
                 m_currentObjects.invalidate();
-            if (m_spritesCount)
+            if (!m_previewOnly && m_spritesCount)
                 m_currentSprites.invalidate();
 
             // Cleanup temporary storages to prevent memory leak
@@ -336,7 +365,7 @@ package otlib.utils
         {
             m_sourceSpriteIds = null;
 
-            if (m_mergeMode == ClientMergeMode.ALL)
+            if (!m_previewOnly && !m_reuseExistingSprites && m_mergeMode == ClientMergeMode.ALL)
                 return;
 
             m_sourceSpriteIds = new Dictionary();
@@ -344,6 +373,17 @@ package otlib.utils
             collectSourceSpriteIds(m_objects.outfits, ThingCategory.OUTFIT, 1, m_objects.outfitsCount);
             collectSourceSpriteIds(m_objects.effects, ThingCategory.EFFECT, 1, m_objects.effectsCount);
             collectSourceSpriteIds(m_objects.missiles, ThingCategory.MISSILE, 1, m_objects.missilesCount);
+
+            var referenced:uint = 0;
+            for (var key:Object in m_sourceSpriteIds)
+                referenced++;
+            m_sourceReferencedSpritesCount = referenced;
+
+            for (var spriteId:uint = 1; spriteId <= m_sprites.spritesCount; spriteId++)
+            {
+                if (m_sourceSpriteIds[spriteId] === undefined && !m_sprites.isEmptySprite(spriteId))
+                    m_ignoredOrphanSpritesCount++;
+            }
         }
 
         private function collectSourceSpriteIds(list:Dictionary, category:String, min:uint, max:uint):void
@@ -356,6 +396,8 @@ package otlib.utils
                 var thing:ThingType = list[id];
                 if (!shouldMergeThing(thing, category) || ThingUtils.isEmpty(thing))
                     continue;
+
+                m_sourceObjectsCount++;
 
                 for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
                 {
@@ -379,6 +421,7 @@ package otlib.utils
             m_spriteIds = new Dictionary();
 
             var result:ChangeResult = new ChangeResult();
+            var simulatedSpriteId:uint = m_currentSprites.spritesCount;
 
             for (var id:int = min; id <= max; id++)
             {
@@ -404,13 +447,22 @@ package otlib.utils
                     else
                     {
                         var hash:String = m_reuseExistingSprites ? getPixelsHash(pixels) : null;
-                        m_currentSprites.internalAddSprite(pixels, result);
-                        m_spriteIds[id] = m_currentSprites.spritesCount;
+                        if (m_previewOnly)
+                        {
+                            simulatedSpriteId++;
+                            m_spritesCount++;
+                            m_spriteIds[id] = simulatedSpriteId;
+                        }
+                        else
+                        {
+                            m_currentSprites.internalAddSprite(pixels, result);
+                            m_spriteIds[id] = m_currentSprites.spritesCount;
+                        }
 
                         if (m_reuseExistingSprites && hash && m_existingSpriteIds[hash] === undefined)
-                            m_existingSpriteIds[hash] = m_currentSprites.spritesCount;
+                            m_existingSpriteIds[hash] = m_spriteIds[id];
                         if (m_reuseExistingSprites && hash && m_currentSpriteHashes)
-                            m_currentSpriteHashes[m_currentSprites.spritesCount] = hash;
+                            m_currentSpriteHashes[m_spriteIds[id]] = hash;
                     }
                 }
             }
@@ -486,7 +538,30 @@ package otlib.utils
             }
 
             if (objects.length != 0)
-                m_currentObjects.addThings(objects);
+            {
+                if (m_previewOnly)
+                {
+                    switch (category)
+                    {
+                        case ThingCategory.ITEM:
+                            m_itemsCount += objects.length;
+                            break;
+                        case ThingCategory.OUTFIT:
+                            m_outfitsCount += objects.length;
+                            break;
+                        case ThingCategory.EFFECT:
+                            m_effectsCount += objects.length;
+                            break;
+                        case ThingCategory.MISSILE:
+                            m_missilesCount += objects.length;
+                            break;
+                    }
+                }
+                else
+                {
+                    m_currentObjects.addThings(objects);
+                }
+            }
         }
 
         private function shouldMergeThing(thing:ThingType, category:String):Boolean
@@ -542,7 +617,21 @@ package otlib.utils
             if (m_mergeMode == ClientMergeMode.UNIQUE_ASSETS)
                 return getVisualThingKey(thing);
 
+            if (m_reuseExistingSprites)
+                return getNormalizedThingKey(thing);
+
             return getFullThingKey(thing);
+        }
+
+        private function getNormalizedThingKey(thing:ThingType):String
+        {
+            if (!thing)
+                return null;
+
+            var parts:Array = [thing.category, "normalized"];
+            appendThingProperties(parts, thing);
+            appendFrameGroups(parts, thing, true);
+            return parts.join("|");
         }
 
         private function getFullThingKey(thing:ThingType):String
@@ -551,6 +640,14 @@ package otlib.utils
                 return null;
 
             var parts:Array = [thing.category];
+            appendFrameGroups(parts, thing, false);
+            return parts.join("|");
+        }
+
+        private function appendFrameGroups(parts:Array, thing:ThingType, useSpriteHashes:Boolean):void
+        {
+            if (!thing)
+                return;
 
             for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
             {
@@ -601,11 +698,9 @@ package otlib.utils
                 if (spriteIds)
                 {
                     for (var s:uint = 0; s < spriteIds.length; s++)
-                        parts[parts.length] = spriteIds[s];
+                        parts[parts.length] = useSpriteHashes ? getCurrentSpriteHash(spriteIds[s]) : spriteIds[s];
                 }
             }
-
-            return parts.join("|");
         }
 
         private function getVisualThingKey(thing:ThingType):String
@@ -645,6 +740,73 @@ package otlib.utils
             }
 
             return parts.join("|");
+        }
+
+        private function appendThingProperties(parts:Array, thing:ThingType):void
+        {
+            parts[parts.length] = thing.isGround ? 1 : 0;
+            parts[parts.length] = thing.groundSpeed;
+            parts[parts.length] = thing.isGroundBorder ? 1 : 0;
+            parts[parts.length] = thing.isOnBottom ? 1 : 0;
+            parts[parts.length] = thing.isOnTop ? 1 : 0;
+            parts[parts.length] = thing.isContainer ? 1 : 0;
+            parts[parts.length] = thing.stackable ? 1 : 0;
+            parts[parts.length] = thing.forceUse ? 1 : 0;
+            parts[parts.length] = thing.multiUse ? 1 : 0;
+            parts[parts.length] = thing.hasCharges ? 1 : 0;
+            parts[parts.length] = thing.writable ? 1 : 0;
+            parts[parts.length] = thing.writableOnce ? 1 : 0;
+            parts[parts.length] = thing.maxReadWriteChars;
+            parts[parts.length] = thing.maxReadChars;
+            parts[parts.length] = thing.isFluidContainer ? 1 : 0;
+            parts[parts.length] = thing.isFluid ? 1 : 0;
+            parts[parts.length] = thing.isUnpassable ? 1 : 0;
+            parts[parts.length] = thing.isUnmoveable ? 1 : 0;
+            parts[parts.length] = thing.blockMissile ? 1 : 0;
+            parts[parts.length] = thing.blockPathfind ? 1 : 0;
+            parts[parts.length] = thing.noMoveAnimation ? 1 : 0;
+            parts[parts.length] = thing.pickupable ? 1 : 0;
+            parts[parts.length] = thing.hangable ? 1 : 0;
+            parts[parts.length] = thing.isVertical ? 1 : 0;
+            parts[parts.length] = thing.isHorizontal ? 1 : 0;
+            parts[parts.length] = thing.rotatable ? 1 : 0;
+            parts[parts.length] = thing.hasLight ? 1 : 0;
+            parts[parts.length] = thing.lightLevel;
+            parts[parts.length] = thing.lightColor;
+            parts[parts.length] = thing.dontHide ? 1 : 0;
+            parts[parts.length] = thing.isTranslucent ? 1 : 0;
+            parts[parts.length] = thing.floorChange ? 1 : 0;
+            parts[parts.length] = thing.hasOffset ? 1 : 0;
+            parts[parts.length] = thing.offsetX;
+            parts[parts.length] = thing.offsetY;
+            parts[parts.length] = thing.hasBones ? 1 : 0;
+            parts[parts.length] = thing.bonesOffsetX ? thing.bonesOffsetX.join(",") : "";
+            parts[parts.length] = thing.bonesOffsetY ? thing.bonesOffsetY.join(",") : "";
+            parts[parts.length] = thing.hasElevation ? 1 : 0;
+            parts[parts.length] = thing.elevation;
+            parts[parts.length] = thing.isLyingObject ? 1 : 0;
+            parts[parts.length] = thing.animateAlways ? 1 : 0;
+            parts[parts.length] = thing.miniMap ? 1 : 0;
+            parts[parts.length] = thing.miniMapColor;
+            parts[parts.length] = thing.isLensHelp ? 1 : 0;
+            parts[parts.length] = thing.lensHelp;
+            parts[parts.length] = thing.isFullGround ? 1 : 0;
+            parts[parts.length] = thing.ignoreLook ? 1 : 0;
+            parts[parts.length] = thing.cloth ? 1 : 0;
+            parts[parts.length] = thing.clothSlot;
+            parts[parts.length] = thing.isMarketItem ? 1 : 0;
+            parts[parts.length] = thing.marketName ? thing.marketName : "";
+            parts[parts.length] = thing.marketCategory;
+            parts[parts.length] = thing.marketTradeAs;
+            parts[parts.length] = thing.marketShowAs;
+            parts[parts.length] = thing.marketRestrictProfession;
+            parts[parts.length] = thing.marketRestrictLevel;
+            parts[parts.length] = thing.hasDefaultAction ? 1 : 0;
+            parts[parts.length] = thing.defaultAction;
+            parts[parts.length] = thing.wrappable ? 1 : 0;
+            parts[parts.length] = thing.unwrappable ? 1 : 0;
+            parts[parts.length] = thing.topEffect ? 1 : 0;
+            parts[parts.length] = thing.usable ? 1 : 0;
         }
 
         private function getCurrentSpriteHash(spriteId:uint):String
