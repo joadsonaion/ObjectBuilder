@@ -1843,6 +1843,7 @@ THE SOFTWARE.
                 var scale:Number = Math.min(
                         (canvasWidth * safeFill) / bounds.width,
                         (canvasHeight * safeFill) / bounds.height);
+                scale = Math.min(1, scale);
                 var drawWidth:Number = bounds.width * scale;
                 var drawHeight:Number = bounds.height * scale;
                 var x:Number = (canvasWidth - drawWidth) / 2;
