@@ -1659,7 +1659,7 @@ THE SOFTWARE.
                 if (!frameGroup)
                     throw new Error("The selected item has no frame group.");
                 var bitmap:BitmapData = renderFirstVisibleItemFrame(data, frameGroup);
-                var canvas:BitmapData = placeWebAssetOnCanvas(bitmap);
+                var canvas:BitmapData = placeWebAssetOnCanvas(bitmap, 64, 64, false);
                 bitmap.dispose();
                 return canvas;
             }
@@ -1703,7 +1703,7 @@ THE SOFTWARE.
             {
                 var prepared:Object = prepareOutfit(data);
                 var bitmap:BitmapData = renderThingFrame(prepared.data, prepared.group, 2, 0);
-                var canvas:BitmapData = placeWebAssetOnCanvas(bitmap);
+                var canvas:BitmapData = placeWebAssetOnCanvas(bitmap, 64, 128, true);
                 bitmap.dispose();
                 return canvas;
             }
@@ -1712,20 +1712,32 @@ THE SOFTWARE.
             {
                 var prepared:Object = prepareOutfit(data);
                 var frameGroup:FrameGroup = prepared.group;
+                var rawFrames:Vector.<BitmapData> = new Vector.<BitmapData>();
                 var frames:Vector.<BitmapData> = new Vector.<BitmapData>();
                 var delays:Vector.<uint> = new Vector.<uint>();
+                var sharedBounds:Rectangle;
 
                 for (var frame:uint = 0; frame < frameGroup.frames; frame++)
                 {
                     var bitmap:BitmapData = renderThingFrame(prepared.data, frameGroup, 2, frame);
-                    frames.push(placeWebAssetOnCanvas(bitmap));
-                    bitmap.dispose();
+                    rawFrames.push(bitmap);
+
+                    var frameBounds:Rectangle = getVisibleBounds(bitmap);
+                    if (frameBounds && !frameBounds.isEmpty())
+                    {
+                        sharedBounds = sharedBounds ?
+                                sharedBounds.union(frameBounds) :
+                                frameBounds.clone();
+                    }
 
                     var frameDuration:FrameDuration = frameGroup.getFrameDuration(frame);
                     var delay:uint = frameDuration ?
                             Math.round((frameDuration.minimum + frameDuration.maximum) / 2) : 100;
                     delays.push(Math.max(20, delay));
                 }
+
+                for each (var rawFrame:BitmapData in rawFrames)
+                    frames.push(placeWebAssetOnCanvas(rawFrame, 64, 128, true, sharedBounds));
 
                 var encoded:ByteArray;
                 try
@@ -1734,6 +1746,8 @@ THE SOFTWARE.
                 }
                 finally
                 {
+                    for each (rawFrame in rawFrames)
+                        rawFrame.dispose();
                     for each (var gifFrame:BitmapData in frames)
                         gifFrame.dispose();
                 }
@@ -1790,29 +1804,44 @@ THE SOFTWARE.
                 if (!bitmap)
                     return false;
 
-                var bounds:Rectangle = bitmap.getColorBoundsRect(0xFF000000, 0, false);
+                var bounds:Rectangle = getVisibleBounds(bitmap);
                 return bounds && !bounds.isEmpty();
             }
 
-            private function placeWebAssetOnCanvas(source:BitmapData):BitmapData
+            private function getVisibleBounds(bitmap:BitmapData):Rectangle
             {
-                const canvasWidth:uint = 128;
-                const canvasHeight:uint = 128;
+                return bitmap ? bitmap.getColorBoundsRect(0xFF000000, 0, false) : null;
+            }
+
+            private function placeWebAssetOnCanvas(source:BitmapData,
+                    canvasWidth:uint,
+                    canvasHeight:uint,
+                    bottomAlign:Boolean,
+                    sourceBounds:Rectangle = null):BitmapData
+            {
                 var canvas:BitmapData = new BitmapData(canvasWidth, canvasHeight, true, 0);
-                var scale:Number = Math.min(1, canvasWidth / source.width, canvasHeight / source.height);
-                var drawWidth:Number = Math.round(source.width * scale);
-                var drawHeight:Number = Math.round(source.height * scale);
+                var bounds:Rectangle = sourceBounds || getVisibleBounds(source);
+                if (!bounds || bounds.isEmpty())
+                    bounds = source.rect;
+
+                var scale:Number = Math.min(2, canvasWidth / bounds.width, canvasHeight / bounds.height);
+                var drawWidth:Number = Math.round(bounds.width * scale);
+                var drawHeight:Number = Math.round(bounds.height * scale);
                 var x:Number = Math.floor((canvasWidth - drawWidth) / 2);
-                var y:Number = Math.floor((canvasHeight - drawHeight) / 2);
+                var y:Number = bottomAlign ?
+                        canvasHeight - drawHeight :
+                        Math.floor((canvasHeight - drawHeight) / 2);
 
                 if (scale == 1)
                 {
-                    canvas.copyPixels(source, source.rect, new Point(x, y), null, null, true);
+                    canvas.copyPixels(source, bounds, new Point(x, y), null, null, true);
                 }
                 else
                 {
-                    var matrix:Matrix = new Matrix(scale, 0, 0, scale, x, y);
-                    canvas.draw(source, matrix, null, null, null, false);
+                    var matrix:Matrix = new Matrix(scale, 0, 0, scale,
+                            x - bounds.x * scale,
+                            y - bounds.y * scale);
+                    canvas.draw(source, matrix, null, null, canvas.rect, false);
                 }
                 return canvas;
             }

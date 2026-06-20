@@ -144,7 +144,7 @@ package ob.utils
         }
 
         // Literal-only LZW is intentionally used here. Frequent clear codes keep the
-        // stream at nine bits and produce compact, deterministic 128x128 outfit GIFs.
+        // stream at nine bits and produce compact, deterministic web outfit GIFs.
         private static function encodeLiteralLzw(indexed:ByteArray):ByteArray
         {
             var output:ByteArray = new ByteArray();
