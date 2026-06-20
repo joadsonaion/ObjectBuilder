@@ -2750,40 +2750,72 @@ package
                     ThingCategory.ITEM : ThingCategory.OUTFIT;
             var pickupableOnly:Boolean = mode == "pickupableItemsPng";
             var list:Vector.<WebAssetExportItem> = new Vector.<WebAssetExportItem>();
-            var first:uint = _things.getMinId(category);
-            var last:uint = _things.getMaxId(category);
+            var exportItem:WebAssetExportItem;
 
-            for (var id:uint = first; id <= last; id++)
+            if (category == ThingCategory.ITEM)
             {
-                var thing:ThingType = _things.getThingType(id, category);
-                if (!thing || thing.isEmpty())
-                    continue;
-
-                var serverItem:ServerItem = null;
-                var serverId:uint = 0;
-                if (category == ThingCategory.ITEM)
+                if (otbLoaded && _items.items)
                 {
-                    if (!otbLoaded)
-                        continue;
+                    var serverItems:Array = _items.items.toArray();
+                    for each (var serverItem:ServerItem in serverItems)
+                    {
+                        var itemThing:ThingType = _things.getThingType(serverItem.clientId, category);
+                        if (!itemThing || !thingHasSprites(itemThing))
+                            continue;
 
-                    serverItem = _items.getItemByClientId(id);
-                    if (!serverItem)
-                        continue;
+                        if (pickupableOnly && !isPickupableWebExportItem(itemThing, serverItem))
+                            continue;
 
-                    if (pickupableOnly && !isPickupableWebExportItem(thing, serverItem))
-                        continue;
-
-                    serverId = serverItem.id;
+                        exportItem = new WebAssetExportItem();
+                        exportItem.id = serverItem.clientId;
+                        exportItem.category = category;
+                        exportItem.serverId = serverItem.id;
+                        list.push(exportItem);
+                    }
                 }
+            }
+            else
+            {
+                var first:uint = _things.getMinId(category);
+                var last:uint = _things.getMaxId(category);
 
-                var item:WebAssetExportItem = new WebAssetExportItem();
-                item.id = id;
-                item.category = category;
-                item.serverId = serverId;
-                list.push(item);
+                for (var id:uint = first; id <= last; id++)
+                {
+                    var thing:ThingType = _things.getThingType(id, category);
+                    if (!thing || !thingHasSprites(thing))
+                        continue;
+
+                    exportItem = new WebAssetExportItem();
+                    exportItem.id = id;
+                    exportItem.category = category;
+                    exportItem.serverId = 0;
+                    list.push(exportItem);
+                }
             }
 
             sendCommand(new SetWebAssetExportListCommand(mode, list));
+        }
+
+        private function thingHasSprites(thing:ThingType):Boolean
+        {
+            if (!thing)
+                return false;
+
+            for (var groupType:uint = FrameGroupType.DEFAULT;
+                    groupType <= FrameGroupType.WALKING;
+                    groupType++)
+            {
+                var group:FrameGroup = thing.getFrameGroup(groupType);
+                if (!group || !group.spriteIndex)
+                    continue;
+
+                for (var i:uint = 0; i < group.spriteIndex.length; i++)
+                {
+                    if (group.spriteIndex[i] != 0)
+                        return true;
+                }
+            }
+            return false;
         }
 
         private function isItemWebExportMode(mode:String):Boolean
@@ -2793,7 +2825,8 @@ package
 
         private function isPickupableWebExportItem(thing:ThingType, serverItem:ServerItem):Boolean
         {
-            return (serverItem && serverItem.pickupable) || (thing && thing.pickupable);
+            return (serverItem && (serverItem.pickupable || serverItem.stackable)) ||
+                    (thing && (thing.pickupable || thing.stackable));
         }
 
         private function findThingCallback(category:String, properties:Vector.<ThingProperty>):void
