@@ -330,17 +330,22 @@ package ob.menu
             toolsMenu.addMenuItem(separator);
 
             var toolsExportItemPng:MenuItem = new MenuItem();
-            toolsExportItemPng.label = "Export Item PNG (Server ID)";
+            toolsExportItemPng.label = "Export All Item PNGs (Server ID)";
             toolsExportItemPng.data = TOOLS_EXPORT_ITEM_PNG;
             toolsMenu.addMenuItem(toolsExportItemPng);
 
+            var toolsExportPickupableItemPng:MenuItem = new MenuItem();
+            toolsExportPickupableItemPng.label = "Export Pickupable Item PNGs";
+            toolsExportPickupableItemPng.data = TOOLS_EXPORT_PICKUPABLE_ITEM_PNG;
+            toolsMenu.addMenuItem(toolsExportPickupableItemPng);
+
             var toolsExportOutfitPng:MenuItem = new MenuItem();
-            toolsExportOutfitPng.label = "Export Front Outfit PNG";
+            toolsExportOutfitPng.label = "Export All Front Outfit PNGs";
             toolsExportOutfitPng.data = TOOLS_EXPORT_OUTFIT_PNG;
             toolsMenu.addMenuItem(toolsExportOutfitPng);
 
             var toolsExportOutfitGif:MenuItem = new MenuItem();
-            toolsExportOutfitGif.label = "Export Front Outfit GIF";
+            toolsExportOutfitGif.label = "Export All Front Outfit GIFs";
             toolsExportOutfitGif.data = TOOLS_EXPORT_OUTFIT_GIF;
             toolsMenu.addMenuItem(toolsExportOutfitGif);
 
@@ -482,8 +487,9 @@ package ob.menu
                 nativeMenu.items[3].submenu.items[16].enabled = m_application.clientLoaded && m_application.otbLoaded;
                 nativeMenu.items[3].submenu.items[17].enabled = m_application.clientLoaded;
                 nativeMenu.items[3].submenu.items[19].enabled = m_application.clientLoaded && m_application.otbLoaded;
-                nativeMenu.items[3].submenu.items[20].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[20].enabled = m_application.clientLoaded && m_application.otbLoaded;
                 nativeMenu.items[3].submenu.items[21].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[22].enabled = m_application.clientLoaded;
             }
             else
             {
@@ -528,8 +534,9 @@ package ob.menu
                 nativeMenu.items[2].submenu.items[16].enabled = m_application.clientLoaded && m_application.otbLoaded;
                 nativeMenu.items[2].submenu.items[17].enabled = m_application.clientLoaded;
                 nativeMenu.items[2].submenu.items[19].enabled = m_application.clientLoaded && m_application.otbLoaded;
-                nativeMenu.items[2].submenu.items[20].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[20].enabled = m_application.clientLoaded && m_application.otbLoaded;
                 nativeMenu.items[2].submenu.items[21].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[22].enabled = m_application.clientLoaded;
             }
         }
 
@@ -676,6 +683,7 @@ package ob.menu
         public static const TOOLS_RME_BRUSH_BUILDER:String = "toolsRmeBrushBuilder";
         public static const TOOLS_MODERN_ASSETS:String = "toolsModernAssets";
         public static const TOOLS_EXPORT_ITEM_PNG:String = "toolsExportItemPng";
+        public static const TOOLS_EXPORT_PICKUPABLE_ITEM_PNG:String = "toolsExportPickupableItemPng";
         public static const TOOLS_EXPORT_OUTFIT_PNG:String = "toolsExportOutfitPng";
         public static const TOOLS_EXPORT_OUTFIT_GIF:String = "toolsExportOutfitGif";
         public static const FILE_NEW_WINDOW:String = "fileNewWindow";

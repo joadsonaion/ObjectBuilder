@@ -132,6 +132,7 @@ THE SOFTWARE.
             import ob.commands.things.ExportThingCommand;
             import ob.commands.things.GetThingCommand;
             import ob.commands.things.GetThingListCommand;
+            import ob.commands.things.GetWebAssetExportListCommand;
             import ob.commands.things.ImportThingsCommand;
             import ob.commands.things.ImportThingsFromFilesCommand;
             import ob.commands.things.NewThingCommand;
@@ -140,6 +141,7 @@ THE SOFTWARE.
             import ob.commands.things.ReplaceThingsFromFilesCommand;
             import ob.commands.things.SetThingDataCommand;
             import ob.commands.things.SetThingListCommand;
+            import ob.commands.things.SetWebAssetExportListCommand;
             import ob.commands.things.UpdateThingCommand;
             import ob.commands.things.BulkUpdateThingsCommand;
             import ob.commands.things.PasteThingDataCommand;
@@ -165,6 +167,7 @@ THE SOFTWARE.
             import ob.components.FrameGroupsConverterWindow;
             import ob.settings.ObjectBuilderSettings;
             import ob.utils.AnimatedGifEncoder;
+            import ob.utils.WebAssetExportItem;
             import otlib.utils.OtlibUtils;
             import otlib.utils.OutfitData;
             
@@ -282,8 +285,13 @@ THE SOFTWARE.
             private var _pendingMergeReuse:Boolean;
             private var _pendingMergeMode:String;
             private var _pendingWebExportMode:String;
-            private var _pendingWebExportThingId:uint;
-            private var _pendingWebExportServerId:uint;
+            private var _pendingWebExportDirectory:File;
+            private var _pendingWebExportQueue:Vector.<WebAssetExportItem>;
+            private var _pendingWebExportCurrent:WebAssetExportItem;
+            private var _pendingWebExportIndex:uint;
+            private var _pendingWebExportExported:uint;
+            private var _pendingWebExportFailed:uint;
+            private var _pendingWebExportErrors:Array = [];
             private var _undoHistory:Array = [];
             private var _redoHistory:Array = [];
             private var _editOriginalThingData:ThingData;
@@ -1376,9 +1384,7 @@ THE SOFTWARE.
                 _undoHistory.length = 0;
                 _redoHistory.length = 0;
                 _editOriginalThingData = null;
-                _pendingWebExportMode = null;
-                _pendingWebExportThingId = 0;
-                _pendingWebExportServerId = 0;
+                clearPendingWebAssetExport();
             }
 
             private function openRmeBrushBuilder():void
@@ -1411,19 +1417,24 @@ THE SOFTWARE.
                 window.open(this);
             }
 
-            public function exportSelectedItemPngByServerId():void
+            public function exportAllItemPngByServerId():void
             {
-                prepareWebAssetExport("itemPng");
+                prepareWebAssetExport("itemsPng");
             }
 
-            public function exportSelectedOutfitPng():void
+            public function exportPickupableItemPngByServerId():void
             {
-                prepareWebAssetExport("outfitPng");
+                prepareWebAssetExport("pickupableItemsPng");
             }
 
-            public function exportSelectedOutfitGif():void
+            public function exportAllOutfitPng():void
             {
-                prepareWebAssetExport("outfitGif");
+                prepareWebAssetExport("outfitsPng");
+            }
+
+            public function exportAllOutfitGif():void
+            {
+                prepareWebAssetExport("outfitsGif");
             }
 
             private function prepareWebAssetExport(mode:String):void
@@ -1431,101 +1442,212 @@ THE SOFTWARE.
                 if (!clientLoaded || _locked)
                     return;
 
-                var active:ThingList = getActiveThingList();
-                var selected:Vector.<ThingListItem> = active ? active.selectedThingItems : null;
-                if (!selected || selected.length != 1)
+                if (isItemWebExportMode(mode) && !_otbLoaded)
                 {
-                    Alert.show("Select exactly one object to export.", "Export PNG/GIF");
+                    Alert.show("Load items.otb before exporting item PNGs by server ID.", "Export PNG/GIF");
                     return;
                 }
 
-                var item:ThingListItem = selected[0];
-                var expectedCategory:String = mode == "itemPng" ? ThingCategory.ITEM : ThingCategory.OUTFIT;
-                if (!item.thing || item.thing.category != expectedCategory)
-                {
-                    Alert.show(mode == "itemPng" ?
-                            "Select an item before exporting." :
-                            "Select an outfit before exporting.", "Export PNG/GIF");
-                    return;
-                }
-
-                if (mode == "itemPng" && item.serverId == 0)
-                {
-                    Alert.show("The selected item has no server ID in the loaded OTB.", "Export Item PNG");
-                    return;
-                }
-
+                clearPendingWebAssetExport();
                 _pendingWebExportMode = mode;
-                _pendingWebExportThingId = item.id;
-                _pendingWebExportServerId = item.serverId;
 
-                var data:ThingData = thingData;
-                if (data && data.id == item.id && data.category == expectedCategory)
+                var directory:File = _settings.getIODirectory() || File.documentsDirectory;
+                var suggested:File = directory.resolvePath(getWebExportFolderName(mode));
+                suggested.addEventListener(Event.SELECT, webExportDirectorySelectHandler);
+                suggested.addEventListener(Event.CANCEL, webExportDirectoryCancelHandler);
+                suggested.browseForDirectory(getWebExportBrowseTitle(mode));
+            }
+
+            private function webExportDirectorySelectHandler(event:Event):void
+            {
+                var directory:File = event.target as File;
+                directory.removeEventListener(Event.SELECT, webExportDirectorySelectHandler);
+                directory.removeEventListener(Event.CANCEL, webExportDirectoryCancelHandler);
+
+                _pendingWebExportDirectory = directory;
+                _settings.setIODirectory(directory);
+                _locked = true;
+                appendLog("Preparing " + getWebExportLabel(_pendingWebExportMode) + " export list...");
+                sendCommand(new GetWebAssetExportListCommand(_pendingWebExportMode));
+            }
+
+            private function webExportDirectoryCancelHandler(event:Event):void
+            {
+                var directory:File = event.target as File;
+                directory.removeEventListener(Event.SELECT, webExportDirectorySelectHandler);
+                directory.removeEventListener(Event.CANCEL, webExportDirectoryCancelHandler);
+                clearPendingWebAssetExport();
+            }
+
+            private function setWebAssetExportListCallback(mode:String,
+                    items:Vector.<WebAssetExportItem>):void
+            {
+                if (!_pendingWebExportDirectory || mode != _pendingWebExportMode)
+                    return;
+
+                _pendingWebExportQueue = items || new Vector.<WebAssetExportItem>();
+                _pendingWebExportIndex = 0;
+                _pendingWebExportExported = 0;
+                _pendingWebExportFailed = 0;
+                _pendingWebExportErrors = [];
+
+                appendLog("Exporting " + _pendingWebExportQueue.length + " " +
+                        getWebExportLabel(mode) + " asset(s)...");
+                startNextWebAssetExport();
+            }
+
+            private function startNextWebAssetExport():void
+            {
+                if (!_pendingWebExportQueue ||
+                        _pendingWebExportIndex >= _pendingWebExportQueue.length)
                 {
-                    beginWebAssetExport(data, mode, item.serverId);
-                    clearPendingWebAssetExport();
+                    finishWebAssetExport();
+                    return;
+                }
+
+                _pendingWebExportCurrent = _pendingWebExportQueue[_pendingWebExportIndex++];
+                sendCommand(new GetThingCommand(_pendingWebExportCurrent.id,
+                        _pendingWebExportCurrent.category));
+            }
+
+            private function exportCurrentWebAsset(data:ThingData):void
+            {
+                var item:WebAssetExportItem = _pendingWebExportCurrent;
+                try
+                {
+                    writeWebAssetExportFile(data, item);
+                    _pendingWebExportExported++;
+                }
+                catch (error:Error)
+                {
+                    _pendingWebExportFailed++;
+                    if (_pendingWebExportErrors.length < 10)
+                    {
+                        _pendingWebExportErrors.push(item.category + " " + item.id +
+                                ": " + error.message);
+                    }
+                }
+
+                if (_pendingWebExportExported % 100 == 0 ||
+                        _pendingWebExportIndex >= _pendingWebExportQueue.length)
+                {
+                    appendLog("Exported " + _pendingWebExportExported + "/" +
+                            _pendingWebExportQueue.length + " " +
+                            getWebExportLabel(_pendingWebExportMode) + " asset(s).");
+                }
+
+                _pendingWebExportCurrent = null;
+                callLater(startNextWebAssetExport);
+            }
+
+            private function writeWebAssetExportFile(data:ThingData,
+                    item:WebAssetExportItem):void
+            {
+                if (!data || !data.thing)
+                    throw new Error("Missing object data.");
+
+                var outputDirectory:File = _pendingWebExportDirectory.resolvePath(
+                        getWebExportFolderName(_pendingWebExportMode));
+                if (!outputDirectory.exists)
+                    outputDirectory.createDirectory();
+
+                var extension:String = _pendingWebExportMode == "outfitsGif" ? "gif" : "png";
+                var outputId:uint = isItemWebExportMode(_pendingWebExportMode) ?
+                        item.serverId : data.id;
+                if (outputId == 0)
+                    throw new Error("Missing output ID.");
+
+                var file:File = outputDirectory.resolvePath(outputId.toString() + "." + extension);
+                var bytes:ByteArray;
+                if (_pendingWebExportMode == "outfitsGif")
+                {
+                    bytes = createOutfitGif(data);
                 }
                 else
                 {
-                    sendCommand(new GetThingCommand(item.id, expectedCategory));
+                    var bitmap:BitmapData = isItemWebExportMode(_pendingWebExportMode) ?
+                            createItemBitmap(data) : createOutfitPngBitmap(data);
+                    bytes = ImageCodec.encode(bitmap, ImageFormat.PNG);
+                    bitmap.dispose();
                 }
+
+                var stream:FileStream = new FileStream();
+                stream.open(file, FileMode.WRITE);
+                stream.writeBytes(bytes);
+                stream.close();
+            }
+
+            private function finishWebAssetExport():void
+            {
+                var message:String = "Export completed: " + _pendingWebExportExported +
+                        " file(s)";
+                if (_pendingWebExportFailed > 0)
+                {
+                    message += ", " + _pendingWebExportFailed + " failure(s)";
+                    if (_pendingWebExportErrors.length > 0)
+                        message += "\n\nFirst errors:\n" + _pendingWebExportErrors.join("\n");
+                }
+                message += "\n\nOutput:\n" + (_pendingWebExportDirectory ?
+                        _pendingWebExportDirectory.nativePath : "");
+
+                appendLog(message);
+                Alert.show(message, "Export PNG/GIF");
+                clearPendingWebAssetExport();
+                _locked = false;
             }
 
             private function clearPendingWebAssetExport():void
             {
                 _pendingWebExportMode = null;
-                _pendingWebExportThingId = 0;
-                _pendingWebExportServerId = 0;
+                _pendingWebExportDirectory = null;
+                _pendingWebExportQueue = null;
+                _pendingWebExportCurrent = null;
+                _pendingWebExportIndex = 0;
+                _pendingWebExportExported = 0;
+                _pendingWebExportFailed = 0;
+                _pendingWebExportErrors = [];
             }
 
-            private function beginWebAssetExport(data:ThingData, mode:String, serverId:uint):void
+            private function isItemWebExportMode(mode:String):Boolean
             {
-                if (!data || !data.thing)
-                    return;
+                return mode == "itemsPng" || mode == "pickupableItemsPng";
+            }
 
-                var extension:String = mode == "outfitGif" ? "gif" : "png";
-                var outputId:uint = mode == "itemPng" ? serverId : data.id;
-                var directory:File = _settings.getIODirectory() || File.documentsDirectory;
-                var suggested:File = directory.resolvePath(outputId.toString() + "." + extension);
-                suggested.addEventListener(Event.SELECT, saveHandler);
-                suggested.browseForSave(mode == "itemPng" ?
-                        "Export item PNG using server ID" :
-                        "Export front outfit " + extension.toUpperCase());
-
-                function saveHandler(event:Event):void
+            private function getWebExportFolderName(mode:String):String
+            {
+                switch (mode)
                 {
-                    var file:File = event.target as File;
-                    file.removeEventListener(Event.SELECT, saveHandler);
-                    if (!file.extension || file.extension.toLowerCase() != extension)
-                        file = new File(file.nativePath + "." + extension);
-
-                    try
-                    {
-                        var bytes:ByteArray;
-                        if (mode == "outfitGif")
-                        {
-                            bytes = createOutfitGif(data);
-                        }
-                        else
-                        {
-                            var bitmap:BitmapData = mode == "itemPng" ?
-                                    createItemBitmap(data) : createOutfitPngBitmap(data);
-                            bytes = ImageCodec.encode(bitmap, ImageFormat.PNG);
-                            bitmap.dispose();
-                        }
-                        var stream:FileStream = new FileStream();
-                        stream.open(file, FileMode.WRITE);
-                        stream.writeBytes(bytes);
-                        stream.close();
-                        _settings.setIODirectory(file.parent);
-                        appendLog("Exported " + file.nativePath);
-                        Alert.show("Export completed:\n" + file.nativePath, "Export PNG/GIF");
-                    }
-                    catch (error:Error)
-                    {
-                        Alert.show(error.message, "Export PNG/GIF Error");
-                    }
+                    case "itemsPng":
+                        return "items";
+                    case "pickupableItemsPng":
+                        return "items_pickupable";
+                    case "outfitsPng":
+                        return "outfits_png";
+                    case "outfitsGif":
+                        return "outfits_gif";
                 }
+                return "web_assets";
+            }
+
+            private function getWebExportLabel(mode:String):String
+            {
+                switch (mode)
+                {
+                    case "itemsPng":
+                        return "item PNG";
+                    case "pickupableItemsPng":
+                        return "pickupable item PNG";
+                    case "outfitsPng":
+                        return "front outfit PNG";
+                    case "outfitsGif":
+                        return "front outfit GIF";
+                }
+                return "web";
+            }
+
+            private function getWebExportBrowseTitle(mode:String):String
+            {
+                return "Choose output folder for " + getWebExportLabel(mode) + " export";
             }
 
             private function createItemBitmap(data:ThingData):BitmapData
@@ -1760,6 +1882,7 @@ THE SOFTWARE.
                 _communicator.registerClass(ThingListItem);
                 _communicator.registerClass(ThingProperty);
                 _communicator.registerClass(ThingType);
+                _communicator.registerClass(WebAssetExportItem);
                 _communicator.registerClass(Version);
                 _communicator.registerClass(ClientFeatures);
             
@@ -1770,6 +1893,7 @@ THE SOFTWARE.
             
                 _communicator.registerCallback(SetThingDataCommand, setThingDataCallback);
                 _communicator.registerCallback(SetThingListCommand, setThingListCallback);
+                _communicator.registerCallback(SetWebAssetExportListCommand, setWebAssetExportListCallback);
                 _communicator.registerCallback(UpdateThingPropertiesCommand, updateThingPropertiesCallback);
                 _communicator.registerCallback(SetSpriteListCommand, setSpriteListCallback);
                 _communicator.registerCallback(NeedToReloadCommand, needToReloadCallback);
@@ -2056,6 +2180,14 @@ THE SOFTWARE.
                 {
                     throw new NullArgumentError("thingData");
                 }
+
+                if (_pendingWebExportCurrent &&
+                        thingData.id == _pendingWebExportCurrent.id &&
+                        thingData.category == _pendingWebExportCurrent.category)
+                {
+                    exportCurrentWebAsset(thingData);
+                    return;
+                }
             
                 // Save current framegroup selection before updating
                 var savedFrameGroup:uint = thingTypeEditor.frameGroupSlider.value;
@@ -2078,15 +2210,6 @@ THE SOFTWARE.
                 {
                     _pendingEditThing = false;
                     editThing(thingData);
-                }
-
-                if (_pendingWebExportMode &&
-                        thingData.id == _pendingWebExportThingId)
-                {
-                    var exportMode:String = _pendingWebExportMode;
-                    var exportServerId:uint = _pendingWebExportServerId;
-                    clearPendingWebAssetExport();
-                    beginWebAssetExport(thingData, exportMode, exportServerId);
                 }
             }
             
@@ -4426,15 +4549,19 @@ THE SOFTWARE.
                         break;
 
                     case Menu.TOOLS_EXPORT_ITEM_PNG:
-                        exportSelectedItemPngByServerId();
+                        exportAllItemPngByServerId();
+                        break;
+
+                    case Menu.TOOLS_EXPORT_PICKUPABLE_ITEM_PNG:
+                        exportPickupableItemPngByServerId();
                         break;
 
                     case Menu.TOOLS_EXPORT_OUTFIT_PNG:
-                        exportSelectedOutfitPng();
+                        exportAllOutfitPng();
                         break;
 
                     case Menu.TOOLS_EXPORT_OUTFIT_GIF:
-                        exportSelectedOutfitGif();
+                        exportAllOutfitGif();
                         break;
             
                     case Menu.WINDOW_LOG:

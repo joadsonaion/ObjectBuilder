@@ -64,9 +64,10 @@ package ob.core
         function get canRedo():Boolean;
         function undoLastChange():void;
         function redoLastChange():void;
-        function exportSelectedItemPngByServerId():void;
-        function exportSelectedOutfitPng():void;
-        function exportSelectedOutfitGif():void;
+        function exportAllItemPngByServerId():void;
+        function exportPickupableItemPngByServerId():void;
+        function exportAllOutfitPng():void;
+        function exportAllOutfitGif():void;
 
         function createNewProject():void;
         function openProject(directory:File = null):void;

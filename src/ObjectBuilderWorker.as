@@ -89,6 +89,7 @@ package
     import ob.commands.things.FindThingCommand;
     import ob.commands.things.GetThingCommand;
     import ob.commands.things.GetThingListCommand;
+    import ob.commands.things.GetWebAssetExportListCommand;
     import ob.commands.things.ImportThingsCommand;
     import ob.commands.things.ImportThingsFromFilesCommand;
     import ob.commands.things.NewThingCommand;
@@ -97,6 +98,7 @@ package
     import ob.commands.things.ReplaceThingsFromFilesCommand;
     import ob.commands.things.SetThingDataCommand;
     import ob.commands.things.SetThingListCommand;
+    import ob.commands.things.SetWebAssetExportListCommand;
     import ob.commands.things.UpdateThingCommand;
     import ob.commands.things.BulkUpdateThingsCommand;
     import ob.commands.things.BulkReplaceCommand;
@@ -108,6 +110,7 @@ package
     import ob.commands.things.ReloadItemAttributesCommand;
     import ob.settings.ObjectBuilderSettings;
     import ob.utils.SpritesFinder;
+    import ob.utils.WebAssetExportItem;
 
     import otlib.items.ServerItemStorage;
     import otlib.items.ServerItem;
@@ -358,6 +361,7 @@ package
             _communicator.registerClass(ThingListItem);
             _communicator.registerClass(ThingProperty);
             _communicator.registerClass(ThingType);
+            _communicator.registerClass(WebAssetExportItem);
             _communicator.registerClass(Version);
             _communicator.registerClass(ClientFeatures);
 
@@ -389,6 +393,7 @@ package
             _communicator.registerCallback(RemoveThingCommand, removeThingsCallback);
             _communicator.registerCallback(GetThingCommand, getThingCallback);
             _communicator.registerCallback(GetThingListCommand, getThingListCallback);
+            _communicator.registerCallback(GetWebAssetExportListCommand, getWebAssetExportListCallback);
             _communicator.registerCallback(FindThingCommand, findThingCallback);
             _communicator.registerCallback(OptimizeFrameDurationsCommand, optimizeFrameDurationsCallback);
             _communicator.registerCallback(ConvertFrameGroupsCommand, convertFrameGroupsCallback);
@@ -2732,6 +2737,63 @@ package
                 throw new NullOrEmptyArgumentError("category");
 
             sendThingList(Vector.<uint>([targetId]), category);
+        }
+
+        private function getWebAssetExportListCallback(mode:String):void
+        {
+            if (!_things || !_things.loaded)
+            {
+                throw new Error(Resources.getString("metadataNotLoaded"));
+            }
+
+            var category:String = isItemWebExportMode(mode) ?
+                    ThingCategory.ITEM : ThingCategory.OUTFIT;
+            var pickupableOnly:Boolean = mode == "pickupableItemsPng";
+            var list:Vector.<WebAssetExportItem> = new Vector.<WebAssetExportItem>();
+            var first:uint = _things.getMinId(category);
+            var last:uint = _things.getMaxId(category);
+
+            for (var id:uint = first; id <= last; id++)
+            {
+                var thing:ThingType = _things.getThingType(id, category);
+                if (!thing || thing.isEmpty())
+                    continue;
+
+                var serverItem:ServerItem = null;
+                var serverId:uint = 0;
+                if (category == ThingCategory.ITEM)
+                {
+                    if (!otbLoaded)
+                        continue;
+
+                    serverItem = _items.getItemByClientId(id);
+                    if (!serverItem)
+                        continue;
+
+                    if (pickupableOnly && !isPickupableWebExportItem(thing, serverItem))
+                        continue;
+
+                    serverId = serverItem.id;
+                }
+
+                var item:WebAssetExportItem = new WebAssetExportItem();
+                item.id = id;
+                item.category = category;
+                item.serverId = serverId;
+                list.push(item);
+            }
+
+            sendCommand(new SetWebAssetExportListCommand(mode, list));
+        }
+
+        private function isItemWebExportMode(mode:String):Boolean
+        {
+            return mode == "itemsPng" || mode == "pickupableItemsPng";
+        }
+
+        private function isPickupableWebExportItem(thing:ThingType, serverItem:ServerItem):Boolean
+        {
+            return (serverItem && serverItem.pickupable) || (thing && thing.pickupable);
         }
 
         private function findThingCallback(category:String, properties:Vector.<ThingProperty>):void
