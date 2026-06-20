@@ -91,7 +91,7 @@ package ob.utils
             output.writeByte(0x21);
             output.writeByte(0xF9);
             output.writeByte(4);
-            output.writeByte(0x05); // Keep frame and use palette index 0 as transparent.
+            output.writeByte(0x09); // Restore background and use palette index 0 as transparent.
             output.writeShort(hundredths);
             output.writeByte(0);
             output.writeByte(0);
