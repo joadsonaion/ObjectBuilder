@@ -66,6 +66,7 @@ package
     import ob.commands.SetClientInfoCommand;
     import ob.commands.SettingsCommand;
     import ob.commands.files.CompileAsCommand;
+    import ob.commands.files.CompileCompactAsCommand;
     import ob.commands.files.CompileCommand;
     import ob.commands.files.CreateNewFilesCommand;
     import ob.commands.files.LoadFilesCommand;
@@ -143,6 +144,7 @@ package
     import otlib.things.ThingTypeStorage;
     import otlib.utils.ChangeResult;
     import otlib.utils.ClientInfo;
+    import otlib.utils.ClientCompactExporter;
     import otlib.utils.ClientMerger;
     import otlib.utils.ClientMergeMode;
     import otlib.utils.OTFI;
@@ -377,6 +379,7 @@ package
             _communicator.registerCallback(MergeFilesCommand, mergeFilesCallback);
             _communicator.registerCallback(CompileCommand, compileCallback);
             _communicator.registerCallback(CompileAsCommand, compileAsCallback);
+            _communicator.registerCallback(CompileCompactAsCommand, compileCompactAsCallback);
             _communicator.registerCallback(UnloadFilesCommand, unloadFilesCallback);
 
             // Thing commands
@@ -795,6 +798,63 @@ package
                 sendCommand(new NeedToReloadCommand(features));
             else
                 sendClientInfo();
+        }
+
+        private function compileCompactAsCallback(datPath:String,
+                sprPath:String,
+                version:Version,
+                features:ClientFeatures):void
+        {
+            if (isNullOrEmpty(datPath))
+                throw new NullOrEmptyArgumentError("datPath");
+
+            if (isNullOrEmpty(sprPath))
+                throw new NullOrEmptyArgumentError("sprPath");
+
+            if (!version)
+                throw new NullArgumentError("version");
+
+            if (!_things || !_things.loaded)
+                throw new Error(Resources.getString("metadataNotLoaded"));
+
+            if (!_sprites || !_sprites.loaded)
+                throw new Error(Resources.getString("spritesNotLoaded"));
+
+            var dat:File = new File(datPath);
+            var spr:File = new File(sprPath);
+            var dir:File = FileUtil.getDirectory(dat);
+            var mapFile:File = dir.resolvePath(FileUtil.getName(dat) + "_compact_id_map.csv");
+            var exporter:ClientCompactExporter = new ClientCompactExporter(_things, _sprites);
+            exporter.addEventListener(ProgressEvent.PROGRESS, progressHandler);
+
+            function progressHandler(event:ProgressEvent):void
+            {
+                sendCommand(new ProgressCommand(event.id, event.loaded, event.total, event.label));
+            }
+
+            if (!exporter.export(dat, spr, mapFile, version, features))
+                return;
+
+            exporter.removeEventListener(ProgressEvent.PROGRESS, progressHandler);
+
+            var otfiFile:File = dir.resolvePath(FileUtil.getName(dat) + ".otfi");
+            var otfi:OTFI = new OTFI(features, dat.name, spr.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
+            otfi.save(otfiFile);
+
+            sendCommand(new ProgressCommand(ProgressBarID.METADATA, 8, 8, "Compact export complete"));
+
+            Log.info("Compact grouped client saved: DAT=" + dat.nativePath +
+                    ", SPR=" + spr.nativePath +
+                    ", map=" + mapFile.nativePath +
+                    ", sprites " + exporter.oldSpriteCount + " -> " + exporter.newSpriteCount +
+                    " (" + exporter.removedSpritesCount + " removed, " + exporter.reusedSpritesCount + " reused duplicate refs)" +
+                    ", outfits=" + exporter.outfitsCount +
+                    ", effects=" + exporter.effectsCount +
+                    ", missiles=" + exporter.missilesCount +
+                    ". Item client IDs were preserved.");
+
+            clientCompileComplete();
+            sendClientInfo();
         }
 
         private function unloadFilesCallback():void

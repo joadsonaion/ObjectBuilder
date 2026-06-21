@@ -349,6 +349,11 @@ package ob.menu
             toolsExportOutfitGif.data = TOOLS_EXPORT_OUTFIT_GIF;
             toolsMenu.addMenuItem(toolsExportOutfitGif);
 
+            var toolsCompileGroupedCompact:MenuItem = new MenuItem();
+            toolsCompileGroupedCompact.label = "Compile Grouped Compact Client";
+            toolsCompileGroupedCompact.data = TOOLS_COMPILE_GROUPED_COMPACT;
+            toolsMenu.addMenuItem(toolsCompileGroupedCompact);
+
             // Window
             var windowMenu:MenuItem = new MenuItem();
             windowMenu.label = Resources.getString("menu.window");
@@ -490,6 +495,7 @@ package ob.menu
                 nativeMenu.items[3].submenu.items[20].enabled = m_application.clientLoaded && m_application.otbLoaded;
                 nativeMenu.items[3].submenu.items[21].enabled = m_application.clientLoaded;
                 nativeMenu.items[3].submenu.items[22].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[23].enabled = m_application.clientLoaded;
             }
             else
             {
@@ -537,6 +543,7 @@ package ob.menu
                 nativeMenu.items[2].submenu.items[20].enabled = m_application.clientLoaded && m_application.otbLoaded;
                 nativeMenu.items[2].submenu.items[21].enabled = m_application.clientLoaded;
                 nativeMenu.items[2].submenu.items[22].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[23].enabled = m_application.clientLoaded;
             }
         }
 
@@ -686,6 +693,7 @@ package ob.menu
         public static const TOOLS_EXPORT_PICKUPABLE_ITEM_PNG:String = "toolsExportPickupableItemPng";
         public static const TOOLS_EXPORT_OUTFIT_PNG:String = "toolsExportOutfitPng";
         public static const TOOLS_EXPORT_OUTFIT_GIF:String = "toolsExportOutfitGif";
+        public static const TOOLS_COMPILE_GROUPED_COMPACT:String = "toolsCompileGroupedCompact";
         public static const FILE_NEW_WINDOW:String = "fileNewWindow";
     }
 }

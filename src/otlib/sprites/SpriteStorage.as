@@ -702,6 +702,118 @@ package otlib.sprites
             return done;
         }
 
+        public function compileCustom(file:File,
+                version:Version,
+                features:ClientFeatures,
+                sprites:Dictionary,
+                spritesCount:uint):Boolean
+        {
+            if (!file)
+            {
+                throw new NullArgumentError("file");
+            }
+
+            if (!version)
+            {
+                throw new NullArgumentError("version");
+            }
+
+            if (!_loaded)
+                return false;
+
+            var compileFeatures:ClientFeatures = features.clone();
+            compileFeatures.applyVersionDefaults(version.value);
+            var extended:Boolean = compileFeatures.extended;
+            var transparency:Boolean = compileFeatures.transparency;
+            var stream:FileStream;
+            var tmpFile:File = FileUtil.getDirectory(file).resolvePath("tmp_" + file.name);
+            var done:Boolean;
+            var headSize:uint;
+            var count:uint;
+
+            try
+            {
+                stream = new FileStream();
+                stream.open(tmpFile, FileMode.WRITE);
+                stream.endian = Endian.LITTLE_ENDIAN;
+                stream.writeUnsignedInt(version.sprSignature);
+
+                if (extended || version.value >= 960)
+                {
+                    count = spritesCount;
+                    headSize = SpriteFileSize.HEADER_U32;
+                    stream.writeUnsignedInt(count);
+                }
+                else
+                {
+                    count = spritesCount >= 0xFFFF ? 0xFFFE : spritesCount;
+                    headSize = SpriteFileSize.HEADER_U16;
+                    stream.writeShort(count);
+                }
+
+                var addressPosition:uint = stream.position;
+                var offset:uint = (count * SpriteFileSize.ADDRESS) + headSize;
+
+                for (var i:uint = 1; i <= count; i++)
+                {
+                    stream.position = addressPosition;
+
+                    var sprite:Sprite = sprites[i] as Sprite;
+                    if (!sprite || sprite.isEmpty)
+                    {
+                        stream.writeUnsignedInt(0);
+                    }
+                    else
+                    {
+                        sprite.transparent = transparency;
+                        sprite.compressedPixels.position = 0;
+
+                        stream.writeUnsignedInt(offset);
+                        stream.position = offset;
+                        stream.writeByte(0xFF);
+                        stream.writeByte(0x00);
+                        stream.writeByte(0xFF);
+                        stream.writeShort(sprite.length);
+
+                        if (sprite.length > 0)
+                        {
+                            stream.writeBytes(sprite.compressedPixels, 0, sprite.length);
+                        }
+
+                        offset = stream.position;
+                    }
+
+                    addressPosition += SpriteFileSize.ADDRESS;
+                }
+
+                stream.close();
+                done = true;
+            }
+            catch (error:Error)
+            {
+                if (stream)
+                    stream.close();
+
+                dispatchEvent(new ErrorEvent(ErrorEvent.ERROR, false, false, error.getStackTrace(), error.errorID));
+                done = false;
+            }
+
+            if (done)
+            {
+                if (file.exists)
+                    file.deleteFile();
+
+                FileUtil.rename(tmpFile, FileUtil.getName(file));
+            }
+            else if (tmpFile.exists)
+            {
+                tmpFile.deleteFile();
+            }
+
+            dispatchEvent(new StorageEvent(StorageEvent.COMPILE));
+            return done;
+        }
+
         public function isEmptySprite(id:uint):Boolean
         {
             if (_loaded && id <= _spritesCount)

@@ -472,6 +472,91 @@ package otlib.things
             return done;
         }
 
+        public function compileCustom(file:File,
+                version:Version,
+                features:ClientFeatures,
+                items:Dictionary,
+                itemsCount:uint,
+                outfits:Dictionary,
+                outfitsCount:uint,
+                effects:Dictionary,
+                effectsCount:uint,
+                missiles:Dictionary,
+                missilesCount:uint):Boolean
+        {
+            if (!file)
+                throw new NullArgumentError("file");
+
+            if (!version)
+                throw new NullArgumentError("version");
+
+            if (!_loaded)
+                return false;
+
+            var compileFeatures:ClientFeatures = features.clone();
+            compileFeatures.applyVersionDefaults(version.value);
+
+            var tmpFile:File = FileUtil.getDirectory(file).resolvePath("tmp_" + file.name);
+            var done:Boolean = true;
+            var writer:MetadataWriter;
+
+            try
+            {
+                writer = MetadataControllerStorage.getInstance().createWriter(compileFeatures.metadataController, version.value);
+
+                writer.features = compileFeatures;
+                writer.open(tmpFile, FileMode.WRITE);
+                writer.writeUnsignedInt(version.datSignature);
+
+                writer.writeShort(itemsCount);
+                writer.writeShort(outfitsCount);
+                writer.writeShort(effectsCount);
+                writer.writeShort(missilesCount);
+
+                if (!writeItemList(writer, items, MIN_ITEM_ID, itemsCount))
+                    done = false;
+
+                if (done && !writeThingList(writer, outfits, MIN_OUTFIT_ID, outfitsCount))
+                    done = false;
+
+                if (done && !writeThingList(writer, effects, MIN_EFFECT_ID, effectsCount))
+                    done = false;
+
+                if (done && !writeThingList(writer, missiles, MIN_MISSILE_ID, missilesCount))
+                    done = false;
+
+                writer.close();
+            }
+            catch (error:Error)
+            {
+                if (writer)
+                    writer.close();
+
+                if (error.errorID == 3001)
+                    Log.error(Resources.getString("accessDenied"));
+                else
+                    dispatchEvent(new ErrorEvent(ErrorEvent.ERROR, false, false, error.getStackTrace(), error.errorID));
+
+                done = false;
+            }
+
+            if (done)
+            {
+                var fileName:String = FileUtil.getName(file);
+                if (file.exists)
+                    file.deleteFile();
+
+                FileUtil.rename(tmpFile, fileName);
+            }
+            else if (tmpFile.exists)
+            {
+                tmpFile.deleteFile();
+            }
+
+            dispatchEvent(new StorageEvent(StorageEvent.COMPILE));
+            return done;
+        }
+
         public function hasThingType(category:String, id:uint):Boolean
         {
             if (_loaded && category)
