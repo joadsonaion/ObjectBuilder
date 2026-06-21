@@ -891,7 +891,7 @@ package
             var dir:File = FileUtil.getDirectory(dat);
             var baseName:String = FileUtil.getName(dat);
             var mapFile:File = dir.resolvePath(baseName + "_cleanup_id_map.csv");
-            var otbFile:File = null;
+            var otbFile:File = (_items && _items.loaded) ? dir.resolvePath(baseName + "_items.otb") : null;
             var cleaner:MergedClientCleaner = new MergedClientCleaner(_things, _sprites, _items);
             cleaner.addEventListener(ProgressEvent.PROGRESS, progressHandler);
 
@@ -928,13 +928,15 @@ package
             Log.info("Merged client cleaned with removal cutoff " + removalCutoff + ": DAT=" + dat.nativePath +
                     ", SPR=" + spr.nativePath +
                     ", map=" + mapFile.nativePath +
-                    ", OTB unchanged (client IDs preserved)" +
-                    ". Items " + cleaner.oldItemsCount + " -> " + cleaner.itemsCount + " (IDs preserved, " + cleaner.duplicateItemsBelowCutoff + " duplicate IDs below cutoff marked)" +
-                    ", outfits " + cleaner.oldOutfitsCount + " -> " + cleaner.outfitsCount + " (IDs preserved, " + cleaner.duplicateOutfitsBelowCutoff + " duplicate IDs below cutoff marked)" +
-                    ", effects " + cleaner.oldEffectsCount + " -> " + cleaner.effectsCount + " (IDs preserved, " + cleaner.duplicateEffectsBelowCutoff + " duplicate IDs below cutoff marked)" +
-                    ", missiles " + cleaner.oldMissilesCount + " -> " + cleaner.missilesCount + " (IDs preserved, " + cleaner.duplicateMissilesBelowCutoff + " duplicate IDs below cutoff marked)" +
+                    (otbFile ? ", OTB=" + otbFile.nativePath : ", OTB not generated (not loaded)") +
+                    ". Items " + cleaner.oldItemsCount + " -> " + cleaner.itemsCount + " (" + cleaner.removedItems + " duplicate IDs below cutoff removed)" +
+                    ", outfits " + cleaner.oldOutfitsCount + " -> " + cleaner.outfitsCount + " (" + cleaner.removedOutfits + " duplicate IDs below cutoff removed)" +
+                    ", effects " + cleaner.oldEffectsCount + " -> " + cleaner.effectsCount + " (" + cleaner.removedEffects + " duplicate IDs below cutoff removed)" +
+                    ", missiles " + cleaner.oldMissilesCount + " -> " + cleaner.missilesCount + " (" + cleaner.removedMissiles + " duplicate IDs below cutoff removed)" +
                     ", sprites " + cleaner.oldSpriteCount + " -> " + cleaner.newSpriteCount + " (" + cleaner.removedSpritesCount + " removed)" +
-                    ". No client ID was removed or reindexed.");
+                    ", remapped server items=" + cleaner.remappedServerItems +
+                    ", unresolved server items=" + cleaner.unresolvedServerItems +
+                    ". Kept objects were not reindexed.");
 
             clientCompileComplete();
             sendClientInfo();

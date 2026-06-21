@@ -34,6 +34,9 @@ package otlib.utils
     import otlib.core.ClientFeatures;
     import otlib.core.Version;
     import otlib.events.ProgressEvent;
+    import otlib.items.OtbWriter;
+    import otlib.items.ServerItem;
+    import otlib.items.ServerItemList;
     import otlib.items.ServerItemStorage;
     import otlib.sprites.Sprite;
     import otlib.sprites.SpriteStorage;
@@ -187,7 +190,16 @@ package otlib.utils
             dispatchProgress(6, 9, "Writing client ID map");
             writeMapping(mapFile);
 
-            dispatchProgress(7, 9, "Client IDs preserved; no OTB remap needed");
+            if (otbFile && m_serverItems && m_serverItems.loaded)
+            {
+                dispatchProgress(7, 9, "Writing remapped items.otb");
+                if (!writeRemappedOtb(otbFile))
+                    return false;
+            }
+            else
+            {
+                dispatchProgress(7, 9, "No items.otb loaded; CSV map only");
+            }
 
             dispatchProgress(8, 9, "Merged client cleanup complete");
             return true;
@@ -286,6 +298,7 @@ package otlib.utils
 
                     if (uint(entry.oldId) < removalCutoff)
                     {
+                        entry.removed = true;
                         entry.duplicate = true;
                         entry.canonicalOldId = canonical.oldId;
                         duplicatesBelowCutoff++;
@@ -295,19 +308,35 @@ package otlib.utils
 
             for each (entry in entries)
             {
+                if (entry.removed)
+                    continue;
+
                 var clone:ThingType = cloneThingWithRemappedSprites(entry.thing as ThingType);
                 clone.id = entry.oldId;
                 clone.category = category;
                 output[entry.oldId] = clone;
                 entry.newId = entry.oldId;
                 oldToNew[entry.oldId] = entry.oldId;
+            }
+
+            for each (entry in entries)
+            {
+                if (entry.removed)
+                {
+                    entry.newId = oldToNew[entry.canonicalOldId];
+                    oldToNew[entry.oldId] = entry.newId;
+                }
+                else
+                {
+                    entry.newId = entry.oldId;
+                }
 
                 var original:ThingType = entry.thing as ThingType;
                 m_mappingRows.push({
                             category: category,
                             oldId: entry.oldId,
                             newId: entry.newId,
-                            status: entry.duplicate ? "duplicate_preserved" : "kept",
+                            status: entry.removed ? "removed_duplicate" : "kept",
                             canonicalOldId: entry.canonicalOldId,
                             name: getThingName(original)
                         });
@@ -330,10 +359,14 @@ package otlib.utils
             }
 
             m_categoryMaps[category] = oldToNew;
+            var count:uint = maxId;
+            while (count > minId && output[count] === undefined)
+                count--;
+
             return {
                 list: output,
-                count: maxId,
-                removed: 0,
+                count: count,
+                removed: duplicatesBelowCutoff,
                 duplicates: duplicatesBelowCutoff
             };
         }
@@ -550,6 +583,40 @@ package otlib.utils
                         csv(row.name) + File.lineEnding);
             }
             stream.close();
+        }
+
+        private function writeRemappedOtb(file:File):Boolean
+        {
+            var source:ServerItemList = m_serverItems.items;
+            var output:ServerItemList = new ServerItemList();
+            output.majorVersion = source.majorVersion;
+            output.minorVersion = source.minorVersion;
+            output.buildNumber = source.buildNumber;
+            output.clientVersion = source.clientVersion;
+
+            var itemMap:Dictionary = m_categoryMaps[ThingCategory.ITEM] as Dictionary;
+            for each (var sourceItem:ServerItem in source.toArray())
+            {
+                var clone:ServerItem = sourceItem.clone();
+                if (clone.clientId != 0 && itemMap[clone.clientId] !== undefined)
+                {
+                    var oldClientId:uint = clone.clientId;
+                    clone.previousClientId = oldClientId;
+                    clone.clientId = uint(itemMap[oldClientId]);
+                    if (clone.clientId != oldClientId)
+                        remappedServerItems++;
+                }
+                else if (clone.clientId != 0)
+                {
+                    clone.previousClientId = clone.clientId;
+                    clone.clientId = 0;
+                    unresolvedServerItems++;
+                }
+                output.add(clone);
+            }
+
+            var writer:OtbWriter = new OtbWriter(output);
+            return writer.write(file);
         }
 
         private function csv(value:*):String
