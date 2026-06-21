@@ -115,6 +115,7 @@ THE SOFTWARE.
             import ob.commands.SettingsCommand;
             import ob.commands.files.CompileAsCommand;
             import ob.commands.files.CompileCompactAsCommand;
+            import ob.commands.files.CleanMergedClientAsCommand;
             import ob.commands.files.CompileCommand;
             import ob.commands.files.CreateNewFilesCommand;
             import ob.commands.files.LoadFilesCommand;
@@ -862,6 +863,45 @@ THE SOFTWARE.
                                     window.version,
                                     features,
                                     true));
+                    }
+                }
+            }
+
+            public function cleanMergedClientAs():void
+            {
+                if (!clientLoaded || _locked)
+                    return;
+
+                _locked = true;
+
+                var window:CompileAssetsWindow = new CompileAssetsWindow();
+                window.directory = _settings.getLastDirectory();
+                window.version = _versionStorage.getFromClientInfo(_clientInfo);
+                window.extended = _clientInfo.extended;
+                window.transparency = _clientInfo.transparency;
+                window.improvedAnimations = _clientInfo.improvedAnimations;
+                window.frameGroups = _clientInfo.frameGroups;
+                window.filesName = isNullOrEmpty(_filesName) ? "Tibia_cleaned" : _filesName + "_cleaned";
+                window.serverItemsLoaded = false;
+                window.addEventListener(Event.CLOSE, windowCloseHandler);
+                window.open(this);
+
+                function windowCloseHandler(event:Event):void
+                {
+                    _locked = false;
+                    _settings.setLastDirectory(window.directory);
+
+                    if (window.detail == DialogDetail.OK)
+                    {
+                        if (_settings.autosaveThingChanges)
+                            saveThingChanges();
+
+                        var features:ClientFeatures = ClientFeatures.fromWindow(window);
+                        sendCommand(new CleanMergedClientAsCommand(window.datFile,
+                                    window.sprFile,
+                                    window.version,
+                                    features,
+                                    24202));
                     }
                 }
             }
@@ -4740,6 +4780,10 @@ THE SOFTWARE.
 
                     case Menu.TOOLS_COMPACT_KEEP_IDS:
                         compileCompactKeepIdsProjectAs();
+                        break;
+
+                    case Menu.TOOLS_CLEAN_MERGED_CLIENT:
+                        cleanMergedClientAs();
                         break;
             
                     case Menu.WINDOW_LOG:

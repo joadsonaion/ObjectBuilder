@@ -66,6 +66,7 @@ package
     import ob.commands.SetClientInfoCommand;
     import ob.commands.SettingsCommand;
     import ob.commands.files.CompileAsCommand;
+    import ob.commands.files.CleanMergedClientAsCommand;
     import ob.commands.files.CompileCompactAsCommand;
     import ob.commands.files.CompileCommand;
     import ob.commands.files.CreateNewFilesCommand;
@@ -145,6 +146,7 @@ package
     import otlib.utils.ChangeResult;
     import otlib.utils.ClientInfo;
     import otlib.utils.ClientCompactExporter;
+    import otlib.utils.MergedClientCleaner;
     import otlib.utils.ClientMerger;
     import otlib.utils.ClientMergeMode;
     import otlib.utils.OTFI;
@@ -380,6 +382,7 @@ package
             _communicator.registerCallback(CompileCommand, compileCallback);
             _communicator.registerCallback(CompileAsCommand, compileAsCallback);
             _communicator.registerCallback(CompileCompactAsCommand, compileCompactAsCallback);
+            _communicator.registerCallback(CleanMergedClientAsCommand, cleanMergedClientAsCallback);
             _communicator.registerCallback(UnloadFilesCommand, unloadFilesCallback);
 
             // Thing commands
@@ -861,6 +864,78 @@ package
                     ", effects=" + exporter.effectsCount +
                     ", missiles=" + exporter.missilesCount +
                     (preserveThingIds ? ". Item/outfit/effect/missile client IDs were preserved." : ". Item client IDs were preserved."));
+
+            clientCompileComplete();
+            sendClientInfo();
+        }
+
+        private function cleanMergedClientAsCallback(datPath:String,
+                sprPath:String,
+                version:Version,
+                features:ClientFeatures,
+                removalCutoff:uint):void
+        {
+            if (isNullOrEmpty(datPath))
+                throw new NullOrEmptyArgumentError("datPath");
+            if (isNullOrEmpty(sprPath))
+                throw new NullOrEmptyArgumentError("sprPath");
+            if (!version)
+                throw new NullArgumentError("version");
+            if (!_things || !_things.loaded)
+                throw new Error(Resources.getString("metadataNotLoaded"));
+            if (!_sprites || !_sprites.loaded)
+                throw new Error(Resources.getString("spritesNotLoaded"));
+
+            var dat:File = new File(datPath);
+            var spr:File = new File(sprPath);
+            var dir:File = FileUtil.getDirectory(dat);
+            var baseName:String = FileUtil.getName(dat);
+            var mapFile:File = dir.resolvePath(baseName + "_cleanup_id_map.csv");
+            var otbFile:File = (_items && _items.loaded) ? dir.resolvePath(baseName + "_items.otb") : null;
+            var cleaner:MergedClientCleaner = new MergedClientCleaner(_things, _sprites, _items);
+            cleaner.addEventListener(ProgressEvent.PROGRESS, progressHandler);
+
+            function progressHandler(event:ProgressEvent):void
+            {
+                sendCommand(new ProgressCommand(event.id, event.loaded, event.total, event.label));
+            }
+
+            var exported:Boolean = false;
+            try
+            {
+                exported = cleaner.export(dat,
+                        spr,
+                        mapFile,
+                        otbFile,
+                        version,
+                        features,
+                        removalCutoff);
+            }
+            finally
+            {
+                cleaner.removeEventListener(ProgressEvent.PROGRESS, progressHandler);
+            }
+
+            if (!exported)
+                return;
+
+            var otfiFile:File = dir.resolvePath(baseName + ".otfi");
+            var otfi:OTFI = new OTFI(features, dat.name, spr.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
+            otfi.save(otfiFile);
+
+            sendCommand(new ProgressCommand(ProgressBarID.METADATA, 9, 9, "Merged client cleanup complete"));
+
+            Log.info("Merged client cleaned with removal cutoff " + removalCutoff + ": DAT=" + dat.nativePath +
+                    ", SPR=" + spr.nativePath +
+                    ", map=" + mapFile.nativePath +
+                    (otbFile ? ", OTB=" + otbFile.nativePath : ", OTB not generated (not loaded)") +
+                    ". Items " + cleaner.oldItemsCount + " -> " + cleaner.itemsCount + " (" + cleaner.removedItems + " duplicates removed)" +
+                    ", outfits " + cleaner.oldOutfitsCount + " -> " + cleaner.outfitsCount + " (" + cleaner.removedOutfits + " removed)" +
+                    ", effects " + cleaner.oldEffectsCount + " -> " + cleaner.effectsCount + " (" + cleaner.removedEffects + " removed)" +
+                    ", missiles " + cleaner.oldMissilesCount + " -> " + cleaner.missilesCount + " (" + cleaner.removedMissiles + " removed)" +
+                    ", sprites " + cleaner.oldSpriteCount + " -> " + cleaner.newSpriteCount + " (" + cleaner.removedSpritesCount + " removed)" +
+                    ", remapped server items=" + cleaner.remappedServerItems +
+                    ", unresolved server items=" + cleaner.unresolvedServerItems + ".");
 
             clientCompileComplete();
             sendClientInfo();
