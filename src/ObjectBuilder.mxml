@@ -821,7 +821,47 @@ THE SOFTWARE.
                         sendCommand(new CompileCompactAsCommand(window.datFile,
                                     window.sprFile,
                                     window.version,
-                                    features));
+                                    features,
+                                    false));
+                    }
+                }
+            }
+
+            public function compileCompactKeepIdsProjectAs():void
+            {
+                if (!clientLoaded || _locked)
+                    return;
+
+                _locked = true;
+
+                var window:CompileAssetsWindow = new CompileAssetsWindow();
+                window.directory = _settings.getLastDirectory();
+                window.version = _versionStorage.getFromClientInfo(_clientInfo);
+                window.extended = _clientInfo.extended;
+                window.transparency = _clientInfo.transparency;
+                window.improvedAnimations = _clientInfo.improvedAnimations;
+                window.frameGroups = _clientInfo.frameGroups;
+                window.filesName = isNullOrEmpty(_filesName) ? "Tibia_compact_keep_ids" : _filesName + "_compact_keep_ids";
+                window.serverItemsLoaded = false;
+                window.addEventListener(Event.CLOSE, windowCloseHandler);
+                window.open(this);
+
+                function windowCloseHandler(event:Event):void
+                {
+                    _locked = false;
+                    _settings.setLastDirectory(window.directory);
+
+                    if (window.detail == DialogDetail.OK)
+                    {
+                        if (_settings.autosaveThingChanges)
+                            saveThingChanges();
+
+                        var features:ClientFeatures = ClientFeatures.fromWindow(window);
+                        sendCommand(new CompileCompactAsCommand(window.datFile,
+                                    window.sprFile,
+                                    window.version,
+                                    features,
+                                    true));
                     }
                 }
             }
@@ -4696,6 +4736,10 @@ THE SOFTWARE.
 
                     case Menu.TOOLS_COMPILE_GROUPED_COMPACT:
                         compileGroupedCompactProjectAs();
+                        break;
+
+                    case Menu.TOOLS_COMPACT_KEEP_IDS:
+                        compileCompactKeepIdsProjectAs();
                         break;
             
                     case Menu.WINDOW_LOG:

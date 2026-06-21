@@ -31,12 +31,14 @@ package ob.commands.files
         public function CompileCompactAsCommand(datFile:File,
                 sprFile:File,
                 version:Version,
-                features:ClientFeatures)
+                features:ClientFeatures,
+                preserveThingIds:Boolean = false)
         {
             super(datFile.nativePath,
                     sprFile.nativePath,
                     version,
-                    features);
+                    features,
+                    preserveThingIds);
         }
     }
 }

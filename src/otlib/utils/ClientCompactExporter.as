@@ -73,13 +73,18 @@ package otlib.utils
             m_sprites = sprites;
         }
 
-        public function export(datFile:File, sprFile:File, mapFile:File, version:Version, features:ClientFeatures):Boolean
+        public function export(datFile:File,
+                sprFile:File,
+                mapFile:File,
+                version:Version,
+                features:ClientFeatures,
+                preserveThingIds:Boolean = false):Boolean
         {
             if (!datFile)
                 throw new NullArgumentError("datFile");
             if (!sprFile)
                 throw new NullArgumentError("sprFile");
-            if (!mapFile)
+            if (!preserveThingIds && !mapFile)
                 throw new NullArgumentError("mapFile");
             if (!version)
                 throw new NullArgumentError("version");
@@ -94,18 +99,35 @@ package otlib.utils
             m_newSprites = new Dictionary();
             m_mapping = [];
 
-            dispatchProgress(0, 8, "Preparing compact export");
+            dispatchProgress(0, 8, preserveThingIds ? "Preparing same-ID compact export" : "Preparing grouped compact export");
 
             var itemList:Dictionary = cloneItems();
+            var outfitList:Dictionary;
+            var effectList:Dictionary;
+            var missileList:Dictionary;
 
-            dispatchProgress(1, 8, "Grouping outfits");
-            var outfitList:Dictionary = cloneGroupedCategory(ThingCategory.OUTFIT);
+            if (preserveThingIds)
+            {
+                dispatchProgress(1, 8, "Preserving outfit IDs");
+                outfitList = clonePreservedCategory(ThingCategory.OUTFIT);
 
-            dispatchProgress(2, 8, "Grouping effects");
-            var effectList:Dictionary = cloneGroupedCategory(ThingCategory.EFFECT);
+                dispatchProgress(2, 8, "Preserving effect IDs");
+                effectList = clonePreservedCategory(ThingCategory.EFFECT);
 
-            dispatchProgress(3, 8, "Grouping missiles");
-            var missileList:Dictionary = cloneGroupedCategory(ThingCategory.MISSILE);
+                dispatchProgress(3, 8, "Preserving missile IDs");
+                missileList = clonePreservedCategory(ThingCategory.MISSILE);
+            }
+            else
+            {
+                dispatchProgress(1, 8, "Grouping outfits");
+                outfitList = cloneGroupedCategory(ThingCategory.OUTFIT);
+
+                dispatchProgress(2, 8, "Grouping effects");
+                effectList = cloneGroupedCategory(ThingCategory.EFFECT);
+
+                dispatchProgress(3, 8, "Grouping missiles");
+                missileList = cloneGroupedCategory(ThingCategory.MISSILE);
+            }
 
             newSpriteCount = m_nextSpriteId > 1 ? m_nextSpriteId - 1 : 1;
             removedSpritesCount = oldSpriteCount > newSpriteCount ? oldSpriteCount - newSpriteCount : 0;
@@ -143,8 +165,15 @@ package otlib.utils
                 return false;
             }
 
-            dispatchProgress(6, 8, "Writing ID map");
-            writeMapping(mapFile);
+            if (preserveThingIds)
+            {
+                dispatchProgress(6, 8, "All client IDs preserved");
+            }
+            else
+            {
+                dispatchProgress(6, 8, "Writing ID map");
+                writeMapping(mapFile);
+            }
 
             dispatchProgress(7, 8, "Compact export complete");
             return true;
@@ -165,6 +194,45 @@ package otlib.utils
                 var clone:ThingType = cloneThingWithRemappedSprites(thing);
                 clone.id = id;
                 clone.category = ThingCategory.ITEM;
+                result[id] = clone;
+            }
+            return result;
+        }
+
+        private function clonePreservedCategory(category:String):Dictionary
+        {
+            var result:Dictionary = new Dictionary();
+            var list:Dictionary;
+            var maxId:uint;
+
+            switch (category)
+            {
+                case ThingCategory.OUTFIT:
+                    list = m_objects.outfits;
+                    maxId = m_objects.outfitsCount;
+                    outfitsCount = maxId;
+                    break;
+                case ThingCategory.EFFECT:
+                    list = m_objects.effects;
+                    maxId = m_objects.effectsCount;
+                    effectsCount = maxId;
+                    break;
+                case ThingCategory.MISSILE:
+                    list = m_objects.missiles;
+                    maxId = m_objects.missilesCount;
+                    missilesCount = maxId;
+                    break;
+            }
+
+            for (var id:uint = 1; id <= maxId; id++)
+            {
+                var thing:ThingType = list[id] as ThingType;
+                if (!thing)
+                    continue;
+
+                var clone:ThingType = cloneThingWithRemappedSprites(thing);
+                clone.id = id;
+                clone.category = category;
                 result[id] = clone;
             }
             return result;

@@ -803,7 +803,8 @@ package
         private function compileCompactAsCallback(datPath:String,
                 sprPath:String,
                 version:Version,
-                features:ClientFeatures):void
+                features:ClientFeatures,
+                preserveThingIds:Boolean = false):void
         {
             if (isNullOrEmpty(datPath))
                 throw new NullOrEmptyArgumentError("datPath");
@@ -823,7 +824,7 @@ package
             var dat:File = new File(datPath);
             var spr:File = new File(sprPath);
             var dir:File = FileUtil.getDirectory(dat);
-            var mapFile:File = dir.resolvePath(FileUtil.getName(dat) + "_compact_id_map.csv");
+            var mapFile:File = preserveThingIds ? null : dir.resolvePath(FileUtil.getName(dat) + "_compact_id_map.csv");
             var exporter:ClientCompactExporter = new ClientCompactExporter(_things, _sprites);
             exporter.addEventListener(ProgressEvent.PROGRESS, progressHandler);
 
@@ -832,10 +833,18 @@ package
                 sendCommand(new ProgressCommand(event.id, event.loaded, event.total, event.label));
             }
 
-            if (!exporter.export(dat, spr, mapFile, version, features))
-                return;
+            var exported:Boolean = false;
+            try
+            {
+                exported = exporter.export(dat, spr, mapFile, version, features, preserveThingIds);
+            }
+            finally
+            {
+                exporter.removeEventListener(ProgressEvent.PROGRESS, progressHandler);
+            }
 
-            exporter.removeEventListener(ProgressEvent.PROGRESS, progressHandler);
+            if (!exported)
+                return;
 
             var otfiFile:File = dir.resolvePath(FileUtil.getName(dat) + ".otfi");
             var otfi:OTFI = new OTFI(features, dat.name, spr.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
@@ -843,15 +852,15 @@ package
 
             sendCommand(new ProgressCommand(ProgressBarID.METADATA, 8, 8, "Compact export complete"));
 
-            Log.info("Compact grouped client saved: DAT=" + dat.nativePath +
+            Log.info((preserveThingIds ? "Same-ID compact client saved: DAT=" : "Compact grouped client saved: DAT=") + dat.nativePath +
                     ", SPR=" + spr.nativePath +
-                    ", map=" + mapFile.nativePath +
+                    (mapFile ? ", map=" + mapFile.nativePath : "") +
                     ", sprites " + exporter.oldSpriteCount + " -> " + exporter.newSpriteCount +
                     " (" + exporter.removedSpritesCount + " removed, " + exporter.reusedSpritesCount + " reused duplicate refs)" +
                     ", outfits=" + exporter.outfitsCount +
                     ", effects=" + exporter.effectsCount +
                     ", missiles=" + exporter.missilesCount +
-                    ". Item client IDs were preserved.");
+                    (preserveThingIds ? ". Item/outfit/effect/missile client IDs were preserved." : ". Item client IDs were preserved."));
 
             clientCompileComplete();
             sendClientInfo();

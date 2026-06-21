@@ -354,6 +354,11 @@ package ob.menu
             toolsCompileGroupedCompact.data = TOOLS_COMPILE_GROUPED_COMPACT;
             toolsMenu.addMenuItem(toolsCompileGroupedCompact);
 
+            var toolsCompactKeepIds:MenuItem = new MenuItem();
+            toolsCompactKeepIds.label = "Compile Compact Client (Keep IDs)";
+            toolsCompactKeepIds.data = TOOLS_COMPACT_KEEP_IDS;
+            toolsMenu.addMenuItem(toolsCompactKeepIds);
+
             // Window
             var windowMenu:MenuItem = new MenuItem();
             windowMenu.label = Resources.getString("menu.window");
@@ -496,6 +501,7 @@ package ob.menu
                 nativeMenu.items[3].submenu.items[21].enabled = m_application.clientLoaded;
                 nativeMenu.items[3].submenu.items[22].enabled = m_application.clientLoaded;
                 nativeMenu.items[3].submenu.items[23].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[24].enabled = m_application.clientLoaded;
             }
             else
             {
@@ -544,6 +550,7 @@ package ob.menu
                 nativeMenu.items[2].submenu.items[21].enabled = m_application.clientLoaded;
                 nativeMenu.items[2].submenu.items[22].enabled = m_application.clientLoaded;
                 nativeMenu.items[2].submenu.items[23].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[24].enabled = m_application.clientLoaded;
             }
         }
 
@@ -694,6 +701,7 @@ package ob.menu
         public static const TOOLS_EXPORT_OUTFIT_PNG:String = "toolsExportOutfitPng";
         public static const TOOLS_EXPORT_OUTFIT_GIF:String = "toolsExportOutfitGif";
         public static const TOOLS_COMPILE_GROUPED_COMPACT:String = "toolsCompileGroupedCompact";
+        public static const TOOLS_COMPACT_KEEP_IDS:String = "toolsCompactKeepIds";
         public static const FILE_NEW_WINDOW:String = "fileNewWindow";
     }
 }
