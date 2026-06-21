@@ -360,7 +360,7 @@ package ob.menu
             toolsMenu.addMenuItem(toolsCompactKeepIds);
 
             var toolsCleanMergedClient:MenuItem = new MenuItem();
-            toolsCleanMergedClient.label = "Clean Merged Client (Remove IDs < 24202)";
+            toolsCleanMergedClient.label = "Clean Merged Client (Keep IDs)";
             toolsCleanMergedClient.data = TOOLS_CLEAN_MERGED_CLIENT;
             toolsMenu.addMenuItem(toolsCleanMergedClient);
 
