@@ -426,8 +426,7 @@ package otlib.utils
 
         private function getThingKey(thing:ThingType):String
         {
-            var parts:Array = [thing.category, "exact"];
-            appendThingProperties(parts, thing);
+            var parts:Array = [thing.category, "visual"];
             appendFrameGroups(parts, thing);
             return parts.join("|");
         }
