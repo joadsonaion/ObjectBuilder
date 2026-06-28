@@ -364,6 +364,11 @@ package ob.menu
             toolsCleanMergedClient.data = TOOLS_CLEAN_MERGED_CLIENT;
             toolsMenu.addMenuItem(toolsCleanMergedClient);
 
+            var toolsBuildMapUsedAssets:MenuItem = new MenuItem();
+            toolsBuildMapUsedAssets.label = "Build Map-Used Client";
+            toolsBuildMapUsedAssets.data = TOOLS_BUILD_MAP_USED_ASSETS;
+            toolsMenu.addMenuItem(toolsBuildMapUsedAssets);
+
             // Window
             var windowMenu:MenuItem = new MenuItem();
             windowMenu.label = Resources.getString("menu.window");
@@ -508,6 +513,7 @@ package ob.menu
                 nativeMenu.items[3].submenu.items[23].enabled = m_application.clientLoaded;
                 nativeMenu.items[3].submenu.items[24].enabled = m_application.clientLoaded;
                 nativeMenu.items[3].submenu.items[25].enabled = m_application.clientLoaded;
+                nativeMenu.items[3].submenu.items[26].enabled = m_application.clientLoaded && m_application.otbLoaded;
             }
             else
             {
@@ -558,6 +564,7 @@ package ob.menu
                 nativeMenu.items[2].submenu.items[23].enabled = m_application.clientLoaded;
                 nativeMenu.items[2].submenu.items[24].enabled = m_application.clientLoaded;
                 nativeMenu.items[2].submenu.items[25].enabled = m_application.clientLoaded;
+                nativeMenu.items[2].submenu.items[26].enabled = m_application.clientLoaded && m_application.otbLoaded;
             }
         }
 
@@ -710,6 +717,7 @@ package ob.menu
         public static const TOOLS_COMPILE_GROUPED_COMPACT:String = "toolsCompileGroupedCompact";
         public static const TOOLS_COMPACT_KEEP_IDS:String = "toolsCompactKeepIds";
         public static const TOOLS_CLEAN_MERGED_CLIENT:String = "toolsCleanMergedClient";
+        public static const TOOLS_BUILD_MAP_USED_ASSETS:String = "toolsBuildMapUsedAssets";
         public static const FILE_NEW_WINDOW:String = "fileNewWindow";
     }
 }

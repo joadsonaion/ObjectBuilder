@@ -1,0 +1,822 @@
+/*
+*  Copyright (c) 2014-2023 Object Builder <https://github.com/ottools/ObjectBuilder>
+*
+*  Permission is hereby granted, free of charge, to any person obtaining a copy
+*  of this software and associated documentation files (the "Software"), to deal
+*  in the Software without restriction, including without limitation the rights
+*  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+*  copies of the Software, and to permit persons to whom the Software is
+*  furnished to do so, subject to the following conditions:
+*
+*  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+*  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+*  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+*  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+*  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+*  OUT OF OR IN CONNECTION WITH THE SOFTWARE.
+*/
+
+package otlib.utils
+{
+    import flash.events.EventDispatcher;
+    import flash.filesystem.File;
+    import flash.filesystem.FileMode;
+    import flash.filesystem.FileStream;
+    import flash.utils.ByteArray;
+    import flash.utils.Dictionary;
+    import flash.utils.Endian;
+
+    import nail.errors.NullArgumentError;
+
+    import ob.commands.ProgressBarID;
+
+    import otlib.animation.FrameDuration;
+    import otlib.animation.FrameGroup;
+    import otlib.core.ClientFeatures;
+    import otlib.core.Version;
+    import otlib.events.ProgressEvent;
+    import otlib.items.OtbWriter;
+    import otlib.items.ServerItem;
+    import otlib.items.ServerItemList;
+    import otlib.items.ServerItemStorage;
+    import otlib.sprites.Sprite;
+    import otlib.sprites.SpriteStorage;
+    import otlib.things.FrameGroupType;
+    import otlib.things.ThingCategory;
+    import otlib.things.ThingType;
+    import otlib.things.ThingTypeStorage;
+
+    [Event(name="progress", type="otlib.events.ProgressEvent")]
+
+    public class MapUsedAssetsBuilder extends EventDispatcher
+    {
+        private static const NODE_START:uint = 0xFE;
+        private static const NODE_END:uint = 0xFF;
+        private static const ESCAPE_CHAR:uint = 0xFD;
+
+        private static const OTBM_ITEM:uint = 6;
+        private static const OTBM_TILE:uint = 5;
+        private static const OTBM_HOUSETILE:uint = 14;
+        private static const OTBM_ATTR_TILE_FLAGS:uint = 3;
+        private static const OTBM_ATTR_ITEM:uint = 9;
+
+        private var m_objects:ThingTypeStorage;
+        private var m_sprites:SpriteStorage;
+        private var m_serverItems:ServerItemStorage;
+
+        private var m_mapPrefix:ByteArray;
+        private var m_mapRoot:Object;
+        private var m_usedServerIds:Dictionary;
+        private var m_oldServerToNewServer:Dictionary;
+        private var m_oldClientToNewClient:Dictionary;
+        private var m_thingKeyToNewClient:Dictionary;
+        private var m_newItems:Dictionary;
+        private var m_newServerItems:ServerItemList;
+        private var m_mappingRows:Array;
+
+        private var m_spriteHashes:Dictionary;
+        private var m_oldToNewSpriteId:Dictionary;
+        private var m_hashToNewSpriteId:Dictionary;
+        private var m_newSprites:Dictionary;
+        private var m_nextSpriteId:uint;
+        private var m_nextClientItemId:uint;
+        private var m_nextServerItemId:uint;
+
+        public var mapItemNodesCount:uint;
+        public var mapCompactItemsCount:uint;
+        public var rewrittenMapItemsCount:uint;
+        public var usedServerItemsCount:uint;
+        public var oldUsedClientItemsCount:uint;
+        public var newClientItemsCount:uint;
+        public var newServerItemsCount:uint;
+        public var oldSpriteCount:uint;
+        public var newSpriteCount:uint;
+        public var reusedSpritesCount:uint;
+        public var removedSpritesCount:uint;
+        public var outfitsCount:uint;
+        public var effectsCount:uint;
+        public var missilesCount:uint;
+
+        public function MapUsedAssetsBuilder(objects:ThingTypeStorage,
+                sprites:SpriteStorage,
+                serverItems:ServerItemStorage)
+        {
+            if (!objects)
+                throw new NullArgumentError("objects");
+            if (!sprites)
+                throw new NullArgumentError("sprites");
+            if (!serverItems)
+                throw new NullArgumentError("serverItems");
+
+            m_objects = objects;
+            m_sprites = sprites;
+            m_serverItems = serverItems;
+        }
+
+        public function export(mapInFile:File,
+                mapOutFile:File,
+                datFile:File,
+                sprFile:File,
+                otbFile:File,
+                csvFile:File,
+                version:Version,
+                features:ClientFeatures):Boolean
+        {
+            if (!mapInFile)
+                throw new NullArgumentError("mapInFile");
+            if (!mapOutFile)
+                throw new NullArgumentError("mapOutFile");
+            if (!datFile)
+                throw new NullArgumentError("datFile");
+            if (!sprFile)
+                throw new NullArgumentError("sprFile");
+            if (!otbFile)
+                throw new NullArgumentError("otbFile");
+            if (!csvFile)
+                throw new NullArgumentError("csvFile");
+            if (!version)
+                throw new NullArgumentError("version");
+            if (!features)
+                throw new NullArgumentError("features");
+            if (!m_serverItems.loaded || !m_serverItems.items)
+                throw new Error("Load items.otb before building map-used assets.");
+
+            initialize();
+
+            dispatchProgress(0, 10, "Reading OTBM map");
+            readMap(mapInFile);
+
+            dispatchProgress(1, 10, "Collecting map item IDs");
+            collectUsedItemIds(m_mapRoot);
+            usedServerItemsCount = countDictionary(m_usedServerIds);
+            if (usedServerItemsCount == 0)
+                throw new Error("No items were found in the selected OTBM map.");
+
+            dispatchProgress(2, 10, "Building compact item map");
+            buildItemMaps();
+
+            dispatchProgress(3, 10, "Rewriting OTBM map IDs");
+            rewriteMapItemIds(m_mapRoot);
+
+            dispatchProgress(4, 10, "Preserving non-item client IDs");
+            var outfitList:Dictionary = clonePreservedCategory(ThingCategory.OUTFIT, m_objects.outfits, m_objects.outfitsCount);
+            outfitsCount = m_objects.outfitsCount;
+            var effectList:Dictionary = clonePreservedCategory(ThingCategory.EFFECT, m_objects.effects, m_objects.effectsCount);
+            effectsCount = m_objects.effectsCount;
+            var missileList:Dictionary = clonePreservedCategory(ThingCategory.MISSILE, m_objects.missiles, m_objects.missilesCount);
+            missilesCount = m_objects.missilesCount;
+
+            newSpriteCount = m_nextSpriteId > 1 ? m_nextSpriteId - 1 : 1;
+            removedSpritesCount = oldSpriteCount > newSpriteCount ? oldSpriteCount - newSpriteCount : 0;
+
+            var compileFeatures:ClientFeatures = features.clone();
+            compileFeatures.applyVersionDefaults(version.value);
+            if (!compileFeatures.extended && version.value < 960 && newSpriteCount >= 0xFFFF)
+                throw new Error("Generated SPR still has " + newSpriteCount + " sprites. Enable Extended or use a 9.60+ client version.");
+
+            dispatchProgress(5, 10, "Writing compact DAT");
+            if (!m_objects.compileCustom(datFile,
+                        version,
+                        features,
+                        m_newItems,
+                        newClientItemsCount,
+                        outfitList,
+                        outfitsCount,
+                        effectList,
+                        effectsCount,
+                        missileList,
+                        missilesCount))
+            {
+                return false;
+            }
+
+            dispatchProgress(6, 10, "Writing compact SPR");
+            if (!m_sprites.compileCustom(sprFile, version, features, m_newSprites, newSpriteCount))
+                return false;
+
+            dispatchProgress(7, 10, "Writing compact items.otb");
+            var writer:OtbWriter = new OtbWriter(m_newServerItems);
+            if (!writer.write(otbFile))
+                return false;
+
+            dispatchProgress(8, 10, "Writing rewritten OTBM map");
+            writeMap(mapOutFile);
+
+            dispatchProgress(9, 10, "Writing map item remap CSV");
+            writeMapping(csvFile);
+
+            dispatchProgress(10, 10, "Map-used assets complete");
+            return true;
+        }
+
+        private function initialize():void
+        {
+            m_mapPrefix = null;
+            m_mapRoot = null;
+            m_usedServerIds = new Dictionary();
+            m_oldServerToNewServer = new Dictionary();
+            m_oldClientToNewClient = new Dictionary();
+            m_thingKeyToNewClient = new Dictionary();
+            m_newItems = new Dictionary();
+            m_newServerItems = new ServerItemList();
+            m_mappingRows = [];
+
+            var source:ServerItemList = m_serverItems.items;
+            m_newServerItems.majorVersion = source.majorVersion;
+            m_newServerItems.minorVersion = source.minorVersion;
+            m_newServerItems.buildNumber = source.buildNumber;
+            m_newServerItems.clientVersion = source.clientVersion;
+
+            m_spriteHashes = new Dictionary();
+            m_oldToNewSpriteId = new Dictionary();
+            m_hashToNewSpriteId = new Dictionary();
+            m_newSprites = new Dictionary();
+            m_nextSpriteId = 1;
+            m_nextClientItemId = ThingTypeStorage.MIN_ITEM_ID;
+            m_nextServerItemId = 100;
+
+            mapItemNodesCount = 0;
+            mapCompactItemsCount = 0;
+            rewrittenMapItemsCount = 0;
+            usedServerItemsCount = 0;
+            oldUsedClientItemsCount = 0;
+            newClientItemsCount = ThingTypeStorage.MIN_ITEM_ID;
+            newServerItemsCount = 0;
+            oldSpriteCount = m_sprites.spritesCount;
+            newSpriteCount = 0;
+            reusedSpritesCount = 0;
+            removedSpritesCount = 0;
+            outfitsCount = 0;
+            effectsCount = 0;
+            missilesCount = 0;
+        }
+
+        private function readMap(file:File):void
+        {
+            if (!file.exists)
+                throw new Error("Map file not found: " + file.nativePath);
+
+            var stream:FileStream = new FileStream();
+            var bytes:ByteArray = new ByteArray();
+            bytes.endian = Endian.LITTLE_ENDIAN;
+            stream.open(file, FileMode.READ);
+            stream.readBytes(bytes, 0, stream.bytesAvailable);
+            stream.close();
+
+            var rootOffset:uint = findRootOffset(bytes);
+            m_mapPrefix = new ByteArray();
+            m_mapPrefix.endian = Endian.LITTLE_ENDIAN;
+            bytes.position = 0;
+            if (rootOffset > 0)
+                m_mapPrefix.writeBytes(bytes, 0, rootOffset);
+
+            bytes.position = rootOffset;
+            m_mapRoot = readNode(bytes);
+        }
+
+        private function writeMap(file:File):void
+        {
+            var bytes:ByteArray = new ByteArray();
+            bytes.endian = Endian.LITTLE_ENDIAN;
+            if (m_mapPrefix && m_mapPrefix.length > 0)
+                bytes.writeBytes(m_mapPrefix);
+            writeNode(bytes, m_mapRoot);
+
+            var stream:FileStream = new FileStream();
+            stream.open(file, FileMode.WRITE);
+            stream.writeBytes(bytes);
+            stream.close();
+        }
+
+        private function findRootOffset(bytes:ByteArray):uint
+        {
+            var limit:uint = Math.min(64, bytes.length);
+            var oldPosition:uint = bytes.position;
+            for (var i:uint = 0; i < limit; i++)
+            {
+                bytes.position = i;
+                if (bytes.readUnsignedByte() == NODE_START)
+                {
+                    bytes.position = oldPosition;
+                    return i;
+                }
+            }
+            bytes.position = oldPosition;
+            throw new Error("Invalid OTBM map: root node marker was not found.");
+        }
+
+        private function readNode(bytes:ByteArray):Object
+        {
+            if (bytes.bytesAvailable < 2)
+                throw new Error("Invalid OTBM map: unexpected end of node stream.");
+
+            var marker:uint = bytes.readUnsignedByte();
+            if (marker != NODE_START)
+                throw new Error("Invalid OTBM map: expected node start marker.");
+
+            var node:Object = {
+                type: bytes.readUnsignedByte(),
+                props: new ByteArray(),
+                children: []
+            };
+            ByteArray(node.props).endian = Endian.LITTLE_ENDIAN;
+
+            while (bytes.bytesAvailable > 0)
+            {
+                var value:uint = bytes.readUnsignedByte();
+                if (value == ESCAPE_CHAR)
+                {
+                    if (bytes.bytesAvailable == 0)
+                        throw new Error("Invalid OTBM map: dangling escape byte.");
+                    ByteArray(node.props).writeByte(bytes.readUnsignedByte());
+                }
+                else if (value == NODE_START)
+                {
+                    bytes.position--;
+                    (node.children as Array).push(readNode(bytes));
+                }
+                else if (value == NODE_END)
+                {
+                    ByteArray(node.props).position = 0;
+                    return node;
+                }
+                else
+                {
+                    ByteArray(node.props).writeByte(value);
+                }
+            }
+
+            throw new Error("Invalid OTBM map: node was not closed.");
+        }
+
+        private function writeNode(bytes:ByteArray, node:Object):void
+        {
+            bytes.writeByte(NODE_START);
+            bytes.writeByte(uint(node.type));
+            writeEscaped(bytes, node.props as ByteArray);
+
+            for each (var child:Object in node.children as Array)
+                writeNode(bytes, child);
+
+            bytes.writeByte(NODE_END);
+        }
+
+        private function writeEscaped(bytes:ByteArray, props:ByteArray):void
+        {
+            if (!props)
+                return;
+            var oldPosition:uint = props.position;
+            props.position = 0;
+            while (props.bytesAvailable > 0)
+            {
+                var value:uint = props.readUnsignedByte();
+                if (value == NODE_START || value == NODE_END || value == ESCAPE_CHAR)
+                    bytes.writeByte(ESCAPE_CHAR);
+                bytes.writeByte(value);
+            }
+            props.position = oldPosition;
+        }
+
+        private function collectUsedItemIds(node:Object):void
+        {
+            var props:ByteArray = node.props as ByteArray;
+            if (uint(node.type) == OTBM_ITEM && props && props.length >= 2)
+            {
+                mapItemNodesCount++;
+                addUsedServerId(readU16(props, 0));
+            }
+            else if ((uint(node.type) == OTBM_TILE || uint(node.type) == OTBM_HOUSETILE) && props)
+            {
+                scanTileCompactItems(node, false);
+            }
+
+            for each (var child:Object in node.children as Array)
+                collectUsedItemIds(child);
+        }
+
+        private function rewriteMapItemIds(node:Object):void
+        {
+            var props:ByteArray = node.props as ByteArray;
+            if (uint(node.type) == OTBM_ITEM && props && props.length >= 2)
+            {
+                rewriteItemIdAt(props, 0);
+            }
+            else if ((uint(node.type) == OTBM_TILE || uint(node.type) == OTBM_HOUSETILE) && props)
+            {
+                scanTileCompactItems(node, true);
+            }
+
+            for each (var child:Object in node.children as Array)
+                rewriteMapItemIds(child);
+        }
+
+        private function scanTileCompactItems(node:Object, rewrite:Boolean):void
+        {
+            var props:ByteArray = node.props as ByteArray;
+            var offset:uint = uint(node.type) == OTBM_HOUSETILE ? 6 : 2;
+            if (!props || props.length <= offset)
+                return;
+
+            while (offset < props.length)
+            {
+                var attribute:uint = readU8(props, offset);
+                offset++;
+                switch (attribute)
+                {
+                    case OTBM_ATTR_TILE_FLAGS:
+                        offset += 4;
+                        break;
+
+                    case OTBM_ATTR_ITEM:
+                        if (offset + 1 >= props.length)
+                            return;
+                        if (!rewrite)
+                            mapCompactItemsCount++;
+                        if (rewrite)
+                            rewriteItemIdAt(props, offset);
+                        else
+                            addUsedServerId(readU16(props, offset));
+                        offset += 2;
+                        break;
+
+                    default:
+                        return;
+                }
+            }
+        }
+
+        private function addUsedServerId(serverId:uint):void
+        {
+            if (serverId == 0)
+                return;
+            m_usedServerIds[serverId] = true;
+        }
+
+        private function rewriteItemIdAt(props:ByteArray, offset:uint):void
+        {
+            var oldId:uint = readU16(props, offset);
+            if (m_oldServerToNewServer[oldId] === undefined)
+                return;
+
+            var newId:uint = uint(m_oldServerToNewServer[oldId]);
+            if (newId != oldId)
+                rewrittenMapItemsCount++;
+            writeU16(props, offset, newId);
+        }
+
+        private function buildItemMaps():void
+        {
+            var ids:Array = [];
+            for (var key:* in m_usedServerIds)
+                ids.push(uint(key));
+            ids.sort(Array.NUMERIC);
+
+            var source:ServerItemList = m_serverItems.items;
+            var usedClientIds:Dictionary = new Dictionary();
+
+            for each (var oldServerId:uint in ids)
+            {
+                var serverItem:ServerItem = source.getItemById(oldServerId);
+                if (!serverItem)
+                    throw new Error("Map uses server item " + oldServerId + ", but it was not found in loaded items.otb.");
+
+                var oldClientId:uint = serverItem.clientId;
+                var thing:ThingType = m_objects.items[oldClientId] as ThingType;
+                if (!ThingUtils.isValid(thing) || ThingUtils.isEmpty(thing))
+                    throw new Error("Map uses server item " + oldServerId + " with missing/empty client item " + oldClientId + ".");
+
+                usedClientIds[oldClientId] = true;
+
+                var newClientId:uint = getOrCreateClientItem(thing, oldClientId);
+                var newServerId:uint = m_nextServerItemId++;
+                if (newServerId > 0xFFFF)
+                    throw new Error("The map uses more than 65436 server items. Tibia 8.60 OTBM/OTB item IDs cannot exceed 65535.");
+                m_oldServerToNewServer[oldServerId] = newServerId;
+
+                var clone:ServerItem = serverItem.clone();
+                clone.id = newServerId;
+                clone.previousClientId = oldClientId;
+                clone.clientId = newClientId;
+                m_newServerItems.add(clone);
+
+                m_mappingRows.push({
+                            oldServerId: oldServerId,
+                            newServerId: newServerId,
+                            oldClientId: oldClientId,
+                            newClientId: newClientId,
+                            name: getServerItemName(serverItem)
+                        });
+            }
+
+            oldUsedClientItemsCount = countDictionary(usedClientIds);
+            newServerItemsCount = m_newServerItems.count;
+        }
+
+        private function getOrCreateClientItem(thing:ThingType, oldClientId:uint):uint
+        {
+            if (m_oldClientToNewClient[oldClientId] !== undefined)
+                return uint(m_oldClientToNewClient[oldClientId]);
+
+            thing.category = ThingCategory.ITEM;
+            var key:String = getThingKey(thing);
+            if (m_thingKeyToNewClient[key] !== undefined)
+            {
+                var duplicateClientId:uint = uint(m_thingKeyToNewClient[key]);
+                m_oldClientToNewClient[oldClientId] = duplicateClientId;
+                return duplicateClientId;
+            }
+
+            var newClientId:uint = m_nextClientItemId++;
+            if (newClientId > 0xFFFF)
+                throw new Error("The map needs more than 65436 client items. Tibia 8.60 DAT item IDs cannot exceed 65535.");
+            var clone:ThingType = cloneThingWithRemappedSprites(thing);
+            clone.id = newClientId;
+            clone.category = ThingCategory.ITEM;
+            m_newItems[newClientId] = clone;
+
+            m_thingKeyToNewClient[key] = newClientId;
+            m_oldClientToNewClient[oldClientId] = newClientId;
+            newClientItemsCount = newClientId;
+            return newClientId;
+        }
+
+        private function clonePreservedCategory(category:String, list:Dictionary, maxId:uint):Dictionary
+        {
+            var result:Dictionary = new Dictionary();
+            for (var id:uint = 1; id <= maxId; id++)
+            {
+                var thing:ThingType = list[id] as ThingType;
+                if (!thing)
+                    continue;
+
+                var clone:ThingType = cloneThingWithRemappedSprites(thing);
+                clone.id = id;
+                clone.category = category;
+                result[id] = clone;
+            }
+            return result;
+        }
+
+        private function cloneThingWithRemappedSprites(thing:ThingType):ThingType
+        {
+            var clone:ThingType = thing.clone();
+            for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
+            {
+                var group:FrameGroup = clone.getFrameGroup(groupType);
+                if (!group || !group.spriteIndex)
+                    continue;
+
+                for (var i:uint = 0; i < group.spriteIndex.length; i++)
+                    group.spriteIndex[i] = getRemappedSpriteId(group.spriteIndex[i]);
+            }
+            return clone;
+        }
+
+        private function getRemappedSpriteId(oldId:uint):uint
+        {
+            if (oldId == 0 || oldId == uint.MAX_VALUE)
+                return 0;
+            if (m_oldToNewSpriteId[oldId] !== undefined)
+                return uint(m_oldToNewSpriteId[oldId]);
+
+            var sprite:Sprite = m_sprites.getSprite(oldId);
+            if (!sprite || sprite.isEmpty)
+            {
+                m_oldToNewSpriteId[oldId] = 0;
+                return 0;
+            }
+
+            var hash:String = getSpriteHash(oldId);
+            if (!hash || hash.indexOf("missing:") == 0)
+            {
+                m_oldToNewSpriteId[oldId] = 0;
+                return 0;
+            }
+
+            if (m_hashToNewSpriteId[hash] !== undefined)
+            {
+                var existingId:uint = uint(m_hashToNewSpriteId[hash]);
+                m_oldToNewSpriteId[oldId] = existingId;
+                reusedSpritesCount++;
+                return existingId;
+            }
+
+            var newId:uint = m_nextSpriteId++;
+            var clonedSprite:Sprite = sprite.clone();
+            clonedSprite.id = newId;
+            m_newSprites[newId] = clonedSprite;
+            m_hashToNewSpriteId[hash] = newId;
+            m_oldToNewSpriteId[oldId] = newId;
+            return newId;
+        }
+
+        private function getSpriteHash(spriteId:uint):String
+        {
+            if (spriteId == 0 || spriteId == uint.MAX_VALUE)
+                return "0";
+            if (m_spriteHashes[spriteId] !== undefined)
+                return String(m_spriteHashes[spriteId]);
+
+            var sprite:Sprite = m_sprites.getSprite(spriteId);
+            var hash:String = (!sprite || sprite.isEmpty) ? "missing:" + spriteId : sprite.getHash();
+            if (!hash)
+                hash = "missing:" + spriteId;
+            m_spriteHashes[spriteId] = hash;
+            return hash;
+        }
+
+        private function getThingKey(thing:ThingType):String
+        {
+            var parts:Array = [thing.category, "properties"];
+            appendThingProperties(parts, thing);
+            parts.push("visual");
+            appendFrameGroups(parts, thing);
+            return parts.join("|");
+        }
+
+        private function appendFrameGroups(parts:Array, thing:ThingType):void
+        {
+            for (var groupType:uint = FrameGroupType.DEFAULT; groupType <= FrameGroupType.WALKING; groupType++)
+            {
+                var frameGroup:FrameGroup = thing.getFrameGroup(groupType);
+                if (!frameGroup)
+                {
+                    parts.push(groupType, "null");
+                    continue;
+                }
+
+                parts.push(groupType,
+                        frameGroup.width,
+                        frameGroup.height,
+                        frameGroup.exactSize,
+                        frameGroup.layers,
+                        frameGroup.patternX,
+                        frameGroup.patternY,
+                        frameGroup.patternZ,
+                        frameGroup.frames,
+                        frameGroup.isAnimation ? 1 : 0,
+                        frameGroup.animationMode,
+                        frameGroup.loopCount,
+                        frameGroup.startFrame);
+
+                var durations:Vector.<FrameDuration> = frameGroup.frameDurations;
+                parts.push(durations ? durations.length : 0);
+                if (durations)
+                {
+                    for each (var duration:FrameDuration in durations)
+                    {
+                        parts.push(duration ? duration.minimum : 0,
+                                duration ? duration.maximum : 0);
+                    }
+                }
+
+                var spriteIds:Vector.<uint> = frameGroup.spriteIndex;
+                parts.push(spriteIds ? spriteIds.length : 0);
+                if (spriteIds)
+                {
+                    for each (var spriteId:uint in spriteIds)
+                        parts.push(getSpriteHash(spriteId));
+                }
+            }
+        }
+
+        private function appendThingProperties(parts:Array, thing:ThingType):void
+        {
+            parts.push(thing.isGround ? 1 : 0, thing.groundSpeed,
+                    thing.isGroundBorder ? 1 : 0,
+                    thing.isOnBottom ? 1 : 0,
+                    thing.isOnTop ? 1 : 0,
+                    thing.isContainer ? 1 : 0,
+                    thing.stackable ? 1 : 0,
+                    thing.forceUse ? 1 : 0,
+                    thing.multiUse ? 1 : 0,
+                    thing.hasCharges ? 1 : 0,
+                    thing.writable ? 1 : 0,
+                    thing.writableOnce ? 1 : 0,
+                    thing.maxReadWriteChars,
+                    thing.maxReadChars,
+                    thing.isFluidContainer ? 1 : 0,
+                    thing.isFluid ? 1 : 0,
+                    thing.isUnpassable ? 1 : 0,
+                    thing.isUnmoveable ? 1 : 0,
+                    thing.blockMissile ? 1 : 0,
+                    thing.blockPathfind ? 1 : 0,
+                    thing.noMoveAnimation ? 1 : 0,
+                    thing.pickupable ? 1 : 0,
+                    thing.hangable ? 1 : 0,
+                    thing.isVertical ? 1 : 0,
+                    thing.isHorizontal ? 1 : 0,
+                    thing.rotatable ? 1 : 0,
+                    thing.hasLight ? 1 : 0,
+                    thing.lightLevel,
+                    thing.lightColor,
+                    thing.dontHide ? 1 : 0,
+                    thing.isTranslucent ? 1 : 0,
+                    thing.floorChange ? 1 : 0,
+                    thing.hasOffset ? 1 : 0,
+                    thing.offsetX,
+                    thing.offsetY,
+                    thing.hasBones ? 1 : 0,
+                    thing.bonesOffsetX ? thing.bonesOffsetX.join(",") : "",
+                    thing.bonesOffsetY ? thing.bonesOffsetY.join(",") : "",
+                    thing.hasElevation ? 1 : 0,
+                    thing.elevation,
+                    thing.isLyingObject ? 1 : 0,
+                    thing.animateAlways ? 1 : 0,
+                    thing.miniMap ? 1 : 0,
+                    thing.miniMapColor,
+                    thing.isLensHelp ? 1 : 0,
+                    thing.lensHelp,
+                    thing.isFullGround ? 1 : 0,
+                    thing.ignoreLook ? 1 : 0,
+                    thing.cloth ? 1 : 0,
+                    thing.clothSlot,
+                    thing.isMarketItem ? 1 : 0,
+                    thing.marketName ? thing.marketName : "",
+                    thing.marketCategory,
+                    thing.marketTradeAs,
+                    thing.marketShowAs,
+                    thing.marketRestrictProfession,
+                    thing.marketRestrictLevel,
+                    thing.hasDefaultAction ? 1 : 0,
+                    thing.defaultAction,
+                    thing.wrappable ? 1 : 0,
+                    thing.unwrappable ? 1 : 0,
+                    thing.topEffect ? 1 : 0,
+                    thing.usable ? 1 : 0);
+        }
+
+        private function readU8(bytes:ByteArray, offset:uint):uint
+        {
+            var position:uint = bytes.position;
+            bytes.position = offset;
+            var value:uint = bytes.readUnsignedByte();
+            bytes.position = position;
+            return value;
+        }
+
+        private function readU16(bytes:ByteArray, offset:uint):uint
+        {
+            var position:uint = bytes.position;
+            bytes.endian = Endian.LITTLE_ENDIAN;
+            bytes.position = offset;
+            var value:uint = bytes.readUnsignedShort();
+            bytes.position = position;
+            return value;
+        }
+
+        private function writeU16(bytes:ByteArray, offset:uint, value:uint):void
+        {
+            var position:uint = bytes.position;
+            bytes.position = offset;
+            bytes.writeByte(value & 0xFF);
+            bytes.writeByte((value >> 8) & 0xFF);
+            bytes.position = position;
+        }
+
+        private function writeMapping(file:File):void
+        {
+            var stream:FileStream = new FileStream();
+            stream.open(file, FileMode.WRITE);
+            stream.writeUTFBytes("old_server_id,new_server_id,old_client_id,new_client_id,name" + File.lineEnding);
+            for each (var row:Object in m_mappingRows)
+            {
+                stream.writeUTFBytes(row.oldServerId + "," +
+                        row.newServerId + "," +
+                        row.oldClientId + "," +
+                        row.newClientId + "," +
+                        csv(row.name) + File.lineEnding);
+            }
+            stream.close();
+        }
+
+        private function getServerItemName(item:ServerItem):String
+        {
+            if (item.nameXml && item.nameXml.length > 0)
+                return item.nameXml;
+            if (item.name && item.name.length > 0)
+                return item.name;
+            return "";
+        }
+
+        private function countDictionary(dict:Dictionary):uint
+        {
+            var total:uint = 0;
+            for (var key:* in dict)
+                total++;
+            return total;
+        }
+
+        private function csv(value:*):String
+        {
+            var text:String = value == null ? "" : String(value);
+            text = text.replace(/"/g, "\"\"");
+            return "\"" + text + "\"";
+        }
+
+        private function dispatchProgress(current:uint, total:uint, label:String):void
+        {
+            dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.METADATA, current, total, label));
+        }
+    }
+}

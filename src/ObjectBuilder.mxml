@@ -113,6 +113,7 @@ THE SOFTWARE.
             import ob.commands.ProgressCommand;
             import ob.commands.SetClientInfoCommand;
             import ob.commands.SettingsCommand;
+            import ob.commands.files.BuildMapUsedAssetsCommand;
             import ob.commands.files.CompileAsCommand;
             import ob.commands.files.CompileCompactAsCommand;
             import ob.commands.files.CleanMergedClientAsCommand;
@@ -221,6 +222,7 @@ THE SOFTWARE.
             import otlib.utils.ThingListItem;
             
             import flash.utils.Timer;
+            import flash.events.Event;
             import flash.events.TimerEvent;
             
             import slicer.Slicer;
@@ -903,6 +905,73 @@ THE SOFTWARE.
                                     features,
                                     24202));
                     }
+                }
+            }
+
+            public function buildMapUsedAssetsAs():void
+            {
+                if (!clientLoaded || _locked)
+                    return;
+
+                if (!_otbLoaded)
+                {
+                    Alert.show("Load items.otb before building map-used assets. OTBM maps store server item IDs.", "Build Map-Used Client");
+                    return;
+                }
+
+                _locked = true;
+
+                var app:ObjectBuilder = this;
+                var mapFile:File = _settings.getIODirectory() || _settings.getLastDirectory() || File.documentsDirectory;
+                mapFile.addEventListener(Event.SELECT, mapSelectHandler);
+                mapFile.addEventListener(Event.CANCEL, mapCancelHandler);
+                mapFile.browseForOpen("Select OTBM map", [new FileFilter("OTBM Map", "*.otbm")]);
+
+                function mapSelectHandler(event:Event):void
+                {
+                    var selectedMap:File = event.target as File;
+                    selectedMap.removeEventListener(Event.SELECT, mapSelectHandler);
+                    selectedMap.removeEventListener(Event.CANCEL, mapCancelHandler);
+                    _settings.setIODirectory(selectedMap);
+
+                    var window:CompileAssetsWindow = new CompileAssetsWindow();
+                    window.directory = _settings.getLastDirectory();
+                    window.version = _versionStorage.getFromClientInfo(_clientInfo);
+                    window.extended = _clientInfo.extended;
+                    window.transparency = _clientInfo.transparency;
+                    window.improvedAnimations = _clientInfo.improvedAnimations;
+                    window.frameGroups = _clientInfo.frameGroups;
+                    window.filesName = FileUtil.getName(selectedMap) + "_used_client";
+                    window.serverItemsLoaded = false;
+                    window.addEventListener(Event.CLOSE, windowCloseHandler);
+                    window.open(app);
+
+                    function windowCloseHandler(event:Event):void
+                    {
+                        _locked = false;
+                        _settings.setLastDirectory(window.directory);
+
+                        if (window.detail == DialogDetail.OK)
+                        {
+                            if (_settings.autosaveThingChanges)
+                                saveThingChanges();
+
+                            var features:ClientFeatures = ClientFeatures.fromWindow(window);
+                            sendCommand(new BuildMapUsedAssetsCommand(selectedMap,
+                                        window.datFile,
+                                        window.sprFile,
+                                        window.version,
+                                        features));
+                        }
+                    }
+                }
+
+                function mapCancelHandler(event:Event):void
+                {
+                    var selectedMap:File = event.target as File;
+                    selectedMap.removeEventListener(Event.SELECT, mapSelectHandler);
+                    selectedMap.removeEventListener(Event.CANCEL, mapCancelHandler);
+                    _locked = false;
                 }
             }
             
@@ -4784,6 +4853,10 @@ THE SOFTWARE.
 
                     case Menu.TOOLS_CLEAN_MERGED_CLIENT:
                         cleanMergedClientAs();
+                        break;
+
+                    case Menu.TOOLS_BUILD_MAP_USED_ASSETS:
+                        buildMapUsedAssetsAs();
                         break;
             
                     case Menu.WINDOW_LOG:

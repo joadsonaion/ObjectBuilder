@@ -66,6 +66,7 @@ package
     import ob.commands.SetClientInfoCommand;
     import ob.commands.SettingsCommand;
     import ob.commands.files.CompileAsCommand;
+    import ob.commands.files.BuildMapUsedAssetsCommand;
     import ob.commands.files.CleanMergedClientAsCommand;
     import ob.commands.files.CompileCompactAsCommand;
     import ob.commands.files.CompileCommand;
@@ -146,6 +147,7 @@ package
     import otlib.utils.ChangeResult;
     import otlib.utils.ClientInfo;
     import otlib.utils.ClientCompactExporter;
+    import otlib.utils.MapUsedAssetsBuilder;
     import otlib.utils.MergedClientCleaner;
     import otlib.utils.ClientMerger;
     import otlib.utils.ClientMergeMode;
@@ -383,6 +385,7 @@ package
             _communicator.registerCallback(CompileAsCommand, compileAsCallback);
             _communicator.registerCallback(CompileCompactAsCommand, compileCompactAsCallback);
             _communicator.registerCallback(CleanMergedClientAsCommand, cleanMergedClientAsCallback);
+            _communicator.registerCallback(BuildMapUsedAssetsCommand, buildMapUsedAssetsCallback);
             _communicator.registerCallback(UnloadFilesCommand, unloadFilesCallback);
 
             // Thing commands
@@ -937,6 +940,91 @@ package
                     ", remapped server items=" + cleaner.remappedServerItems +
                     ", unresolved server items=" + cleaner.unresolvedServerItems +
                     ". Kept objects were not reindexed.");
+
+            clientCompileComplete();
+            sendClientInfo();
+        }
+
+        private function buildMapUsedAssetsCallback(mapPath:String,
+                datPath:String,
+                sprPath:String,
+                version:Version,
+                features:ClientFeatures):void
+        {
+            if (isNullOrEmpty(mapPath))
+                throw new NullOrEmptyArgumentError("mapPath");
+            if (isNullOrEmpty(datPath))
+                throw new NullOrEmptyArgumentError("datPath");
+            if (isNullOrEmpty(sprPath))
+                throw new NullOrEmptyArgumentError("sprPath");
+            if (!version)
+                throw new NullArgumentError("version");
+            if (!_things || !_things.loaded)
+                throw new Error(Resources.getString("metadataNotLoaded"));
+            if (!_sprites || !_sprites.loaded)
+                throw new Error(Resources.getString("spritesNotLoaded"));
+            if (!_items || !_items.loaded)
+                throw new Error("Load items.otb before building map-used assets.");
+
+            var mapIn:File = new File(mapPath);
+            var dat:File = new File(datPath);
+            var spr:File = new File(sprPath);
+            var dir:File = FileUtil.getDirectory(dat);
+            var baseName:String = FileUtil.getName(dat);
+            var mapOut:File = dir.resolvePath(baseName + ".otbm");
+            if (mapOut.nativePath == mapIn.nativePath)
+                mapOut = dir.resolvePath(baseName + "_remapped.otbm");
+            var otbFile:File = dir.resolvePath(baseName + "_items.otb");
+            var csvFile:File = dir.resolvePath(baseName + "_map_item_remap.csv");
+
+            var builder:MapUsedAssetsBuilder = new MapUsedAssetsBuilder(_things, _sprites, _items);
+            builder.addEventListener(ProgressEvent.PROGRESS, progressHandler);
+
+            function progressHandler(event:ProgressEvent):void
+            {
+                sendCommand(new ProgressCommand(event.id, event.loaded, event.total, event.label));
+            }
+
+            var exported:Boolean = false;
+            try
+            {
+                exported = builder.export(mapIn,
+                        mapOut,
+                        dat,
+                        spr,
+                        otbFile,
+                        csvFile,
+                        version,
+                        features);
+            }
+            finally
+            {
+                builder.removeEventListener(ProgressEvent.PROGRESS, progressHandler);
+            }
+
+            if (!exported)
+                return;
+
+            var otfiFile:File = dir.resolvePath(baseName + ".otfi");
+            var otfi:OTFI = new OTFI(features, dat.name, spr.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
+            otfi.save(otfiFile);
+
+            sendCommand(new ProgressCommand(ProgressBarID.METADATA, 10, 10, "Map-used assets complete"));
+
+            Log.info("Map-used assets generated: DAT=" + dat.nativePath +
+                    ", SPR=" + spr.nativePath +
+                    ", OTB=" + otbFile.nativePath +
+                    ", MAP=" + mapOut.nativePath +
+                    ", CSV=" + csvFile.nativePath +
+                    ". Map used server items=" + builder.usedServerItemsCount +
+                    ", map item nodes=" + builder.mapItemNodesCount +
+                    ", compact tile items=" + builder.mapCompactItemsCount +
+                    ", rewritten references=" + builder.rewrittenMapItemsCount +
+                    ", client items " + builder.oldUsedClientItemsCount + " -> " + builder.newClientItemsCount +
+                    ", server items -> " + builder.newServerItemsCount +
+                    ", sprites " + builder.oldSpriteCount + " -> " + builder.newSpriteCount +
+                    " (" + builder.removedSpritesCount + " removed, " + builder.reusedSpritesCount + " duplicate refs reused). " +
+                    "Outfit/effect/missile IDs were preserved.");
 
             clientCompileComplete();
             sendClientInfo();
