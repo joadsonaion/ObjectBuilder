@@ -47,7 +47,6 @@ package otlib.things
     import otlib.utils.ThingUtils;
     import otlib.animation.FrameGroup;
     import otlib.things.FrameGroupType;
-    import ob.settings.ObjectBuilderSettings;
     import otlib.core.VersionStorage;
 
     use namespace otlib_internal;
@@ -81,7 +80,7 @@ package otlib.things
         private var _thingsCount:uint;
         otlib_internal var _changed:Boolean;
         private var _loaded:Boolean;
-        private var _settings:ObjectBuilderSettings;
+        private var _settings:Object;
         private var _currentFeatures:ClientFeatures;
 
         // --------------------------------------
@@ -149,7 +148,7 @@ package otlib.things
         // CONSTRUCTOR
         // --------------------------------------------------------------------------
 
-        public function ThingTypeStorage(settings:ObjectBuilderSettings)
+        public function ThingTypeStorage(settings:Object = null)
         {
             _settings = settings;
         }
@@ -224,10 +223,10 @@ package otlib.things
             _effectsCount = MIN_EFFECT_ID;
             _missilesCount = MIN_MISSILE_ID;
 
-            _items[_itemsCount] = ThingType.create(_itemsCount, ThingCategory.ITEM, _currentFeatures.frameGroups, _settings.getDefaultDuration(ThingCategory.ITEM));
-            _outfits[_outfitsCount] = ThingType.create(_outfitsCount, ThingCategory.OUTFIT, _currentFeatures.frameGroups, _settings.getDefaultDuration(ThingCategory.OUTFIT));
-            _effects[_effectsCount] = ThingType.create(_effectsCount, ThingCategory.EFFECT, _currentFeatures.frameGroups, _settings.getDefaultDuration(ThingCategory.EFFECT));
-            _missiles[_missilesCount] = ThingType.create(_missilesCount, ThingCategory.MISSILE, _currentFeatures.frameGroups, _settings.getDefaultDuration(ThingCategory.MISSILE));
+            _items[_itemsCount] = ThingType.create(_itemsCount, ThingCategory.ITEM, _currentFeatures.frameGroups, getDefaultDuration(ThingCategory.ITEM));
+            _outfits[_outfitsCount] = ThingType.create(_outfitsCount, ThingCategory.OUTFIT, _currentFeatures.frameGroups, getDefaultDuration(ThingCategory.OUTFIT));
+            _effects[_effectsCount] = ThingType.create(_effectsCount, ThingCategory.EFFECT, _currentFeatures.frameGroups, getDefaultDuration(ThingCategory.EFFECT));
+            _missiles[_missilesCount] = ThingType.create(_missilesCount, ThingCategory.MISSILE, _currentFeatures.frameGroups, getDefaultDuration(ThingCategory.MISSILE));
             _changed = false;
             _loaded = true;
 
@@ -611,7 +610,7 @@ package otlib.things
                 if (!ThingUtils.isValid(thing))
                 {
                     Log.error(Resources.getString("failedToGetThing", ThingCategory.ITEM, id));
-                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, _settings.getDefaultDuration(ThingCategory.ITEM));
+                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, getDefaultDuration(ThingCategory.ITEM));
                     thing.id = id;
                 }
                 return thing;
@@ -627,7 +626,7 @@ package otlib.things
                 if (!ThingUtils.isValid(thing))
                 {
                     Log.error(Resources.getString("failedToGetThing", ThingCategory.OUTFIT, id));
-                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, _settings.getDefaultDuration(ThingCategory.ITEM));
+                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, getDefaultDuration(ThingCategory.ITEM));
                     thing.category = ThingCategory.OUTFIT;
                     thing.id = id;
                 }
@@ -644,7 +643,7 @@ package otlib.things
                 if (!ThingUtils.isValid(thing))
                 {
                     Log.error(Resources.getString("failedToGetThing", ThingCategory.EFFECT, id));
-                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, _settings.getDefaultDuration(ThingCategory.ITEM));
+                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, getDefaultDuration(ThingCategory.ITEM));
                     thing.category = ThingCategory.EFFECT;
                     thing.id = id;
                 }
@@ -661,7 +660,7 @@ package otlib.things
                 if (!ThingUtils.isValid(thing))
                 {
                     Log.error(Resources.getString("failedToGetThing", ThingCategory.MISSILE, id));
-                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, _settings.getDefaultDuration(ThingCategory.ITEM));
+                    thing = ThingUtils.createAlertThing(ThingCategory.ITEM, getDefaultDuration(ThingCategory.ITEM));
                     thing.category = ThingCategory.MISSILE;
                     thing.id = id;
                 }
@@ -840,7 +839,7 @@ package otlib.things
                     if (!ThingUtils.isValid(thing))
                     {
                         var id:uint = thing.id;
-                        thing = ThingUtils.createAlertThing(ThingCategory.EFFECT, _settings.getDefaultDuration(ThingCategory.EFFECT));
+                        thing = ThingUtils.createAlertThing(ThingCategory.EFFECT, getDefaultDuration(ThingCategory.EFFECT));
                         thing.id = id;
                     }
                     result.push(thing);
@@ -1047,7 +1046,7 @@ package otlib.things
 
             var removedThing:ThingType;
 
-            var duration:uint = _settings.getDefaultDuration(category);
+            var duration:uint = getDefaultDuration(category);
             if (category == ThingCategory.ITEM)
             {
                 removedThing = _items[id];
@@ -1252,6 +1251,25 @@ package otlib.things
             }
 
             return true;
+        }
+
+        private function getDefaultDuration(category:String):uint
+        {
+            if (_settings && "getDefaultDuration" in _settings)
+                return uint(_settings.getDefaultDuration(category));
+
+            switch (category)
+            {
+                case ThingCategory.OUTFIT:
+                    return 300;
+                case ThingCategory.EFFECT:
+                    return 100;
+                case ThingCategory.MISSILE:
+                    return 75;
+                case ThingCategory.ITEM:
+                default:
+                    return 500;
+            }
         }
 
         // --------------------------------------------------------------------------

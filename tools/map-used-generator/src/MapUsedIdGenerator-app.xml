@@ -14,8 +14,8 @@
         <autoOrients>false</autoOrients>
         <fullScreen>false</fullScreen>
         <visible>true</visible>
-        <width>820</width>
-        <height>560</height>
+        <width>920</width>
+        <height>680</height>
         <minSize>720 480</minSize>
         <requestedDisplayResolution>high</requestedDisplayResolution>
     </initialWindow>

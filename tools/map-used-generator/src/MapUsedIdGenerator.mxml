@@ -3,8 +3,8 @@
         xmlns:s="library://ns.adobe.com/flex/spark"
         xmlns:mx="library://ns.adobe.com/flex/mx"
         title="Map Used ID Generator"
-        width="820"
-        height="560"
+        width="920"
+        height="680"
         minWidth="720"
         minHeight="480"
         backgroundColor="#1f1f1f"
@@ -21,14 +21,24 @@
 
             import mapused.MapUsedProcessor;
 
+            import otlib.core.ClientFeatures;
+
             private var mapFile:File;
             private var otbFile:File;
+            private var datFile:File;
+            private var sprFile:File;
             private var outputDir:File;
 
             private function initApp():void
             {
                 startIdInput.text = "100";
-                appendLog("Pronto. Selecione o mapa .otbm e, se quiser client_id/nome no CSV, selecione items.otb.");
+                versionInput.text = "860";
+                extendedCheck.selected = true;
+                transparencyCheck.selected = true;
+                improvedAnimationsCheck.selected = true;
+                frameGroupsCheck.selected = true;
+                compactClientCheck.selected = true;
+                appendLog("Pronto. Selecione mapa, items.otb, Tibia.dat e Tibia.spr para gerar cliente compacto.");
             }
 
             private function browseMap():void
@@ -64,6 +74,34 @@
                 otbInput.text = otbFile.nativePath;
             }
 
+            private function browseDat():void
+            {
+                var file:File = datFile || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
+                file.addEventListener(Event.SELECT, datSelected);
+                file.browseForOpen("Selecionar Tibia.dat", [new FileFilter("Tibia.dat", "*.dat")]);
+            }
+
+            private function datSelected(event:Event):void
+            {
+                datFile = event.target as File;
+                datFile.removeEventListener(Event.SELECT, datSelected);
+                datInput.text = datFile.nativePath;
+            }
+
+            private function browseSpr():void
+            {
+                var file:File = sprFile || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
+                file.addEventListener(Event.SELECT, sprSelected);
+                file.browseForOpen("Selecionar Tibia.spr", [new FileFilter("Tibia.spr", "*.spr")]);
+            }
+
+            private function sprSelected(event:Event):void
+            {
+                sprFile = event.target as File;
+                sprFile.removeEventListener(Event.SELECT, sprSelected);
+                sprInput.text = sprFile.nativePath;
+            }
+
             private function browseOutput():void
             {
                 var dir:File = outputDir || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
@@ -80,11 +118,15 @@
 
             private function runGenerator():void
             {
-                if (!mapFile && mapInput.text.length > 0)
+                if (mapInput.text.length > 0)
                     mapFile = new File(mapInput.text);
-                if (!otbFile && otbInput.text.length > 0)
+                if (otbInput.text.length > 0)
                     otbFile = new File(otbInput.text);
-                if (!outputDir && outputInput.text.length > 0)
+                if (datInput.text.length > 0)
+                    datFile = new File(datInput.text);
+                if (sprInput.text.length > 0)
+                    sprFile = new File(sprInput.text);
+                if (outputInput.text.length > 0)
                     outputDir = new File(outputInput.text);
 
                 if (!mapFile || !mapFile.exists)
@@ -102,12 +144,17 @@
 
                 runButton.enabled = false;
                 appendLog("");
-                appendLog("Iniciando leitura direta do mapa...");
+                appendLog(compactClientCheck.selected ? "Iniciando compactacao completa..." : "Iniciando leitura direta do mapa...");
                 appendLog("Mapa: " + mapFile.nativePath);
                 if (otbFile && otbFile.exists)
                     appendLog("OTB: " + otbFile.nativePath);
                 else
                     appendLog("OTB: nao selecionado; CSV sai sem client_id/nome.");
+                if (compactClientCheck.selected)
+                {
+                    appendLog("DAT: " + (datFile ? datFile.nativePath : ""));
+                    appendLog("SPR: " + (sprFile ? sprFile.nativePath : ""));
+                }
                 appendLog("Saida: " + (outputDir ? outputDir.nativePath : mapFile.parent.resolvePath("map_used_generator").nativePath));
 
                 setTimeout(doRunGenerator, 60);
@@ -118,21 +165,57 @@
                 try
                 {
                     var processor:MapUsedProcessor = new MapUsedProcessor();
-                    var result:Object = processor.run(mapFile,
-                            otbFile,
-                            outputDir,
-                            uint(parseInt(startIdInput.text, 10)),
-                            rewriteMapCheck.selected);
+                    var result:Object;
+                    if (compactClientCheck.selected)
+                    {
+                        result = processor.runCompact(mapFile,
+                                datFile,
+                                sprFile,
+                                otbFile,
+                                outputDir,
+                                uint(parseInt(versionInput.text, 10)),
+                                new ClientFeatures(extendedCheck.selected,
+                                        transparencyCheck.selected,
+                                        improvedAnimationsCheck.selected,
+                                        frameGroupsCheck.selected,
+                                        "default",
+                                        attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
+                                appendLog);
 
-                    appendLog("Concluido.");
-                    appendLog("IDs unicos usados: " + result.usedServerItemsCount);
-                    appendLog("Item nodes: " + result.mapItemNodesCount);
-                    appendLog("Tile compact items: " + result.mapCompactItemsCount);
-                    appendLog("Referencias remapeadas: " + result.rewrittenMapItemsCount);
-                    appendLog("CSV IDs: " + result.usedCsv);
-                    appendLog("CSV remap: " + result.remapCsv);
-                    if (result.remappedMap && result.remappedMap.length > 0)
-                        appendLog("Mapa remapeado: " + result.remappedMap);
+                        appendLog("Concluido.");
+                        appendLog("Itens de mapa usados: " + result.usedServerItemsCount);
+                        appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
+                        appendLog("Novo max client item ID: " + result.newClientItemsCount);
+                        appendLog("Novos server items: " + result.newServerItemsCount);
+                        appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
+                                " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
+                        appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
+                        appendLog("DAT: " + result.dat);
+                        appendLog("SPR: " + result.spr);
+                        appendLog("OTB: " + result.otb);
+                        appendLog("OTFI: " + result.otfi);
+                        appendLog("Mapa remapeado: " + result.map);
+                        appendLog("CSV IDs: " + result.usedCsv);
+                        appendLog("CSV remap: " + result.remapCsv);
+                    }
+                    else
+                    {
+                        result = processor.run(mapFile,
+                                otbFile,
+                                outputDir,
+                                uint(parseInt(startIdInput.text, 10)),
+                                rewriteMapCheck.selected);
+
+                        appendLog("Concluido.");
+                        appendLog("IDs unicos usados: " + result.usedServerItemsCount);
+                        appendLog("Item nodes: " + result.mapItemNodesCount);
+                        appendLog("Tile compact items: " + result.mapCompactItemsCount);
+                        appendLog("Referencias remapeadas: " + result.rewrittenMapItemsCount);
+                        appendLog("CSV IDs: " + result.usedCsv);
+                        appendLog("CSV remap: " + result.remapCsv);
+                        if (result.remappedMap && result.remappedMap.length > 0)
+                            appendLog("Mapa remapeado: " + result.remappedMap);
+                    }
                 }
                 catch (error:Error)
                 {
@@ -186,7 +269,7 @@
         <s:VerticalLayout paddingLeft="14" paddingRight="14" paddingTop="12" paddingBottom="12" gap="10"/>
     </s:layout>
 
-    <s:Label text="Gera lista de server IDs usados pelo mapa e opcionalmente cria um OTBM remapeado. Nao carrega DAT/SPR."/>
+    <s:Label text="Gera CSV/mapa remapeado ou um cliente compacto completo com DAT/SPR/items.otb baseado nos itens usados pelo mapa."/>
 
     <s:VGroup width="100%" gap="6">
         <s:Label text="Mapa .otbm"/>
@@ -204,6 +287,24 @@
         </s:HGroup>
     </s:VGroup>
 
+    <s:HGroup width="100%" gap="10">
+        <s:VGroup width="50%" gap="6">
+            <s:Label text="Tibia.dat para cliente compacto"/>
+            <s:HGroup width="100%" gap="8">
+                <s:TextInput id="datInput" width="100%"/>
+                <s:Button label="Procurar" width="110" click="browseDat()"/>
+            </s:HGroup>
+        </s:VGroup>
+
+        <s:VGroup width="50%" gap="6">
+            <s:Label text="Tibia.spr para cliente compacto"/>
+            <s:HGroup width="100%" gap="8">
+                <s:TextInput id="sprInput" width="100%"/>
+                <s:Button label="Procurar" width="110" click="browseSpr()"/>
+            </s:HGroup>
+        </s:VGroup>
+    </s:HGroup>
+
     <s:VGroup width="100%" gap="6">
         <s:Label text="Pasta de saida"/>
         <s:HGroup width="100%" gap="8">
@@ -215,9 +316,21 @@
     <s:HGroup width="100%" verticalAlign="middle" gap="16">
         <s:Label text="Novo server ID inicial"/>
         <s:TextInput id="startIdInput" width="90"/>
+        <s:Label text="Versao"/>
+        <s:TextInput id="versionInput" width="70"/>
+        <s:Label text="Attr"/>
+        <s:TextInput id="attributeServerInput" width="80" text="tfs0.5"/>
+    </s:HGroup>
+
+    <s:HGroup width="100%" verticalAlign="middle" gap="14">
+        <s:CheckBox id="compactClientCheck" selected="true" label="Gerar cliente compacto DAT/SPR/OTB"/>
         <s:CheckBox id="rewriteMapCheck" selected="true" label="Gerar mapa remapeado"/>
+        <s:CheckBox id="extendedCheck" label="Extended"/>
+        <s:CheckBox id="transparencyCheck" label="Transparency"/>
+        <s:CheckBox id="improvedAnimationsCheck" label="Improved anim"/>
+        <s:CheckBox id="frameGroupsCheck" label="Frame groups"/>
         <s:Spacer width="100%"/>
-        <s:Button id="runButton" label="Gerar IDs/Mapa" width="150" height="32" click="runGenerator()"/>
+        <s:Button id="runButton" label="Gerar" width="150" height="32" click="runGenerator()"/>
     </s:HGroup>
 
     <s:TextArea id="logArea" width="100%" height="100%" editable="false"/>

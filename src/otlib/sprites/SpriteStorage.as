@@ -34,6 +34,8 @@ package otlib.sprites
     import flash.utils.Dictionary;
     import flash.utils.Endian;
 
+    import by.blooddy.crypto.MD5;
+
     import nail.errors.NullArgumentError;
     import nail.logging.Log;
     import nail.utils.FileUtil;
@@ -812,6 +814,55 @@ package otlib.sprites
 
             dispatchEvent(new StorageEvent(StorageEvent.COMPILE));
             return done;
+        }
+
+        public function getStorageHashFast(id:uint):String
+        {
+            if (!_loaded || id == 0 || id == uint.MAX_VALUE || id > _spritesCount)
+                return null;
+
+            if (_sprites && _sprites[id] !== undefined)
+            {
+                var sprite:Sprite = _sprites[id] as Sprite;
+                return (!sprite || sprite.isEmpty) ? null : sprite.getStorageHash();
+            }
+
+            if (!_reader)
+                return null;
+
+            var oldPosition:Number = _reader.position;
+            try
+            {
+                _reader.position = ((id - 1) * SpriteFileSize.ADDRESS) + _headerSize;
+                var address:uint = _reader.readUnsignedInt();
+                if (address == 0)
+                {
+                    _reader.position = oldPosition;
+                    return null;
+                }
+
+                _reader.position = address + 3;
+                var length:uint = _reader.readUnsignedShort();
+                if (length == 0)
+                {
+                    _reader.position = oldPosition;
+                    return null;
+                }
+
+                var bytes:ByteArray = new ByteArray();
+                _reader.readBytes(bytes, 0, length);
+                bytes.position = 0;
+                var hash:String = MD5.hashBytes(bytes);
+                bytes.clear();
+                _reader.position = oldPosition;
+                return hash;
+            }
+            catch (error:Error)
+            {
+                _reader.position = oldPosition;
+                return null;
+            }
+            return null;
         }
 
         public function compileRemapped(file:File,

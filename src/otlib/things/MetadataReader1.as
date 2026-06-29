@@ -257,7 +257,7 @@ package otlib.things
                     }
                     else
                     {
-                        var duration:uint = settings.getDefaultDuration(type.category);
+                        var duration:uint = getDefaultDuration(type.category);
                         for (i = 0; i < frameGroup.frames; i++)
                             frameGroup.frameDurations[i] = new FrameDuration(duration, duration);
                     }

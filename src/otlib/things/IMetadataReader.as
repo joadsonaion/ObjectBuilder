@@ -23,13 +23,12 @@
 package otlib.things
 {
     import flash.utils.IDataInput;
-    import ob.settings.ObjectBuilderSettings;
     import otlib.core.ClientFeatures;
 
     public interface IMetadataReader extends IDataInput
     {
-        function get settings():ObjectBuilderSettings;
-        function set settings(value:ObjectBuilderSettings):void;
+        function get settings():Object;
+        function set settings(value:Object):void;
 
         function get features():ClientFeatures;
         function set features(value:ClientFeatures):void;

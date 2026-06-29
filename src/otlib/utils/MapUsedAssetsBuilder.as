@@ -575,6 +575,14 @@ package otlib.utils
                 return uint(m_oldClientToNewClient[oldClientId]);
 
             thing.category = ThingCategory.ITEM;
+            var key:String = getThingKey(thing);
+            if (m_thingKeyToNewClient[key] !== undefined)
+            {
+                var duplicateClientId:uint = uint(m_thingKeyToNewClient[key]);
+                m_oldClientToNewClient[oldClientId] = duplicateClientId;
+                return duplicateClientId;
+            }
+
             var newClientId:uint = m_nextClientItemId++;
             if (newClientId > 0xFFFF)
                 throw new Error("The map needs more than 65436 client items. Tibia 8.60 DAT item IDs cannot exceed 65535.");
@@ -583,6 +591,7 @@ package otlib.utils
             clone.category = ThingCategory.ITEM;
             m_newItems[newClientId] = clone;
 
+            m_thingKeyToNewClient[key] = newClientId;
             m_oldClientToNewClient[oldClientId] = newClientId;
             newClientItemsCount = newClientId;
             return newClientId;
@@ -632,8 +641,24 @@ package otlib.utils
                 return uint(m_oldToNewSpriteId[oldId]);
             }
 
+            var hash:String = getSpriteHash(oldId);
+            if (!hash || hash.indexOf("missing:") == 0)
+            {
+                m_oldToNewSpriteId[oldId] = 0;
+                return 0;
+            }
+
+            if (m_hashToNewSpriteId[hash] !== undefined)
+            {
+                var existingId:uint = uint(m_hashToNewSpriteId[hash]);
+                m_oldToNewSpriteId[oldId] = existingId;
+                reusedSpritesCount++;
+                return existingId;
+            }
+
             var newId:uint = m_nextSpriteId++;
             m_oldToNewSpriteId[oldId] = newId;
+            m_hashToNewSpriteId[hash] = newId;
             return newId;
         }
 
@@ -644,8 +669,7 @@ package otlib.utils
             if (m_spriteHashes[spriteId] !== undefined)
                 return String(m_spriteHashes[spriteId]);
 
-            var sprite:Sprite = m_sprites.getSprite(spriteId);
-            var hash:String = (!sprite || sprite.isEmpty) ? "missing:" + spriteId : sprite.getStorageHash();
+            var hash:String = m_sprites.getStorageHashFast(spriteId);
             if (!hash)
                 hash = "missing:" + spriteId;
             m_spriteHashes[spriteId] = hash;

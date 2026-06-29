@@ -10,6 +10,16 @@ package mapused
     import otlib.items.OtbReader;
     import otlib.items.ServerItem;
     import otlib.items.ServerItemList;
+    import otlib.items.ServerItemStorage;
+    import otlib.core.ClientFeatures;
+    import otlib.core.Version;
+    import otlib.events.ProgressEvent;
+    import otlib.sprites.SpriteStorage;
+    import otlib.things.ThingTypeStorage;
+    import otlib.utils.MapUsedAssetsBuilder;
+    import otlib.utils.OTFI;
+    import otlib.utils.SpriteExtent;
+
 
     public class MapUsedProcessor
     {
@@ -79,6 +89,106 @@ package mapused
                 mapCompactItemsCount: mapCompactItemsCount,
                 rewrittenMapItemsCount: rewrittenMapItemsCount,
                 otbLoaded: m_items != null
+            };
+        }
+
+        public function runCompact(mapFile:File,
+                datFile:File,
+                sprFile:File,
+                otbFile:File,
+                outputDir:File,
+                versionValue:uint,
+                features:ClientFeatures,
+                progress:Function = null):Object
+        {
+            if (!mapFile || !mapFile.exists)
+                throw new Error("Selecione um mapa .otbm valido.");
+            if (!datFile || !datFile.exists)
+                throw new Error("Selecione Tibia.dat valido.");
+            if (!sprFile || !sprFile.exists)
+                throw new Error("Selecione Tibia.spr valido.");
+            if (!otbFile || !otbFile.exists)
+                throw new Error("Selecione items.otb valido.");
+
+            if (!outputDir)
+                outputDir = mapFile.parent.resolvePath("map_used_compact_client");
+            if (!outputDir.exists)
+                outputDir.createDirectory();
+
+            if (!features)
+                features = new ClientFeatures(true, true, true, true, "default", "tfs0.5");
+
+            var version:Version = new Version();
+            version.value = versionValue > 0 ? versionValue : 860;
+            version.valueStr = String(version.value);
+
+            if (progress != null)
+                progress("Carregando DAT...");
+            var objects:ThingTypeStorage = new ThingTypeStorage();
+            objects.load(datFile, version, features);
+
+            if (progress != null)
+                progress("Carregando SPR...");
+            var sprites:SpriteStorage = new SpriteStorage();
+            sprites.load(sprFile, version, features);
+
+            version.datSignature = objects.signature;
+            version.sprSignature = sprites.signature;
+
+            if (progress != null)
+                progress("Carregando items.otb...");
+            var serverItems:ServerItemStorage = new ServerItemStorage();
+            if (!serverItems.load(otbFile))
+                throw new Error("Nao foi possivel carregar items.otb.");
+
+            var baseName:String = fileBaseName(mapFile);
+            var mapOut:File = outputDir.resolvePath(baseName + "_remapped.otbm");
+            var datOut:File = outputDir.resolvePath("Tibia.dat");
+            var sprOut:File = outputDir.resolvePath("Tibia.spr");
+            var otbOut:File = outputDir.resolvePath("items.otb");
+            var usedIdsFile:File = outputDir.resolvePath(baseName + "_map_used_server_ids.csv");
+            var remapCsv:File = outputDir.resolvePath(baseName + "_map_item_remap.csv");
+
+            var builder:MapUsedAssetsBuilder = new MapUsedAssetsBuilder(objects, sprites, serverItems);
+            if (progress != null)
+                builder.addEventListener(ProgressEvent.PROGRESS, function(event:ProgressEvent):void
+                {
+                    progress(event.label);
+                });
+
+            if (!builder.export(mapFile,
+                    mapOut,
+                    datOut,
+                    sprOut,
+                    otbOut,
+                    usedIdsFile,
+                    remapCsv,
+                    version,
+                    features))
+            {
+                throw new Error("Falha ao gerar cliente compacto.");
+            }
+
+            var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
+            otfi.save(outputDir.resolvePath("Tibia.otfi"));
+
+            return {
+                dat: datOut.nativePath,
+                spr: sprOut.nativePath,
+                otb: otbOut.nativePath,
+                map: mapOut.nativePath,
+                otfi: outputDir.resolvePath("Tibia.otfi").nativePath,
+                usedCsv: usedIdsFile.nativePath,
+                remapCsv: remapCsv.nativePath,
+                usedServerItemsCount: builder.usedServerItemsCount,
+                oldUsedClientItemsCount: builder.oldUsedClientItemsCount,
+                newClientItemsCount: builder.newClientItemsCount,
+                newServerItemsCount: builder.newServerItemsCount,
+                oldSpriteCount: builder.oldSpriteCount,
+                newSpriteCount: builder.newSpriteCount,
+                reusedSpritesCount: builder.reusedSpritesCount,
+                removedSpritesCount: builder.removedSpritesCount,
+                rewrittenMapItemsCount: builder.rewrittenMapItemsCount
             };
         }
 

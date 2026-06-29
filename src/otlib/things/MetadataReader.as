@@ -31,12 +31,11 @@ package otlib.things
     import otlib.animation.FrameGroup;
     import com.mignari.utils.StringUtil;
     import otlib.utils.SpriteExtent;
-    import ob.settings.ObjectBuilderSettings;
     import otlib.core.ClientFeatures;
 
     public class MetadataReader extends FileStream implements IMetadataReader
     {
-        private var _settings:ObjectBuilderSettings;
+        private var _settings:Object;
         private var _features:ClientFeatures;
 
         // --------------------------------------------------------------------------
@@ -56,11 +55,11 @@ package otlib.things
         // Public
         // --------------------------------------
 
-        public function get settings():ObjectBuilderSettings
+        public function get settings():Object
         {
             return _settings;
         }
-        public function set settings(value:ObjectBuilderSettings):void
+        public function set settings(value:Object):void
         {
             if (_settings != value)
                 _settings = value;
@@ -164,7 +163,7 @@ package otlib.things
                     }
                     else
                     {
-                        var duration:uint = settings.getDefaultDuration(type.category);
+                        var duration:uint = getDefaultDuration(type.category);
                         for (i = 0; i < frameGroup.frames; i++)
                             frameGroup.frameDurations[i] = new FrameDuration(duration, duration);
                     }
@@ -187,6 +186,25 @@ package otlib.things
             }
 
             return true;
+        }
+
+        protected function getDefaultDuration(category:String):uint
+        {
+            if (_settings && "getDefaultDuration" in _settings)
+                return uint(_settings.getDefaultDuration(category));
+
+            switch (category)
+            {
+                case ThingCategory.OUTFIT:
+                    return 300;
+                case ThingCategory.EFFECT:
+                    return 100;
+                case ThingCategory.MISSILE:
+                    return 75;
+                case ThingCategory.ITEM:
+                default:
+                    return 500;
+            }
         }
     }
 }
