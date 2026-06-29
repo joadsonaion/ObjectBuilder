@@ -170,7 +170,8 @@ package mapused
                     version,
                     features,
                     extraServerIds,
-                    !includeXmlDefinitions))
+                    !includeXmlDefinitions,
+                    includeXmlDefinitions))
             {
                 throw new Error("Falha ao gerar cliente compacto.");
             }

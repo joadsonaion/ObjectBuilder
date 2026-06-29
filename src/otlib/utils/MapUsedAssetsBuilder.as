@@ -85,6 +85,7 @@ package otlib.utils
         private var m_nextClientItemId:uint;
         private var m_nextServerItemId:uint;
         private var m_dedupeClientItems:Boolean;
+        private var m_preserveClientItemIds:Boolean;
         private var m_thingHashToClientId:Dictionary;
         private var m_thingHashCache:Dictionary;
 
@@ -131,7 +132,8 @@ package otlib.utils
                 version:Version,
                 features:ClientFeatures,
                 extraServerIds:Dictionary = null,
-                dedupeClientItems:Boolean = true):Boolean
+                dedupeClientItems:Boolean = true,
+                preserveClientItemIds:Boolean = false):Boolean
         {
             if (!mapInFile)
                 throw new NullArgumentError("mapInFile");
@@ -156,6 +158,7 @@ package otlib.utils
 
             initialize();
             m_dedupeClientItems = dedupeClientItems;
+            m_preserveClientItemIds = preserveClientItemIds;
 
             dispatchProgress(0, 10, "Scanning OTBM item IDs");
             scanMapUsedItemIds(mapInFile);
@@ -256,6 +259,7 @@ package otlib.utils
             m_nextClientItemId = ThingTypeStorage.MIN_ITEM_ID;
             m_nextServerItemId = 100;
             m_dedupeClientItems = true;
+            m_preserveClientItemIds = false;
 
             mapItemNodesCount = 0;
             mapCompactItemsCount = 0;
@@ -636,6 +640,9 @@ package otlib.utils
 
         private function getOrCreateClientItem(thing:ThingType, oldClientId:uint):uint
         {
+            if (m_preserveClientItemIds)
+                return preserveClientItem(thing, oldClientId);
+
             if (m_dedupeClientItems && m_oldClientToNewClient[oldClientId] !== undefined)
                 return uint(m_oldClientToNewClient[oldClientId]);
 
@@ -661,6 +668,24 @@ package otlib.utils
             m_oldClientToNewClient[oldClientId] = newClientId;
             newClientItemsCount = newClientId;
             return newClientId;
+        }
+
+        private function preserveClientItem(thing:ThingType, oldClientId:uint):uint
+        {
+            if (oldClientId < ThingTypeStorage.MIN_ITEM_ID || oldClientId > 0xFFFF)
+                throw new Error("Cannot preserve invalid client item ID " + oldClientId + ".");
+
+            if (m_oldClientToNewClient[oldClientId] !== undefined)
+                return uint(m_oldClientToNewClient[oldClientId]);
+
+            var clone:ThingType = cloneThingWithRemappedSprites(thing);
+            clone.id = oldClientId;
+            clone.category = ThingCategory.ITEM;
+            m_newItems[oldClientId] = clone;
+            m_oldClientToNewClient[oldClientId] = oldClientId;
+            if (oldClientId > newClientItemsCount)
+                newClientItemsCount = oldClientId;
+            return oldClientId;
         }
 
         private function resolveThingForServerItem(serverItem:ServerItem):Object
