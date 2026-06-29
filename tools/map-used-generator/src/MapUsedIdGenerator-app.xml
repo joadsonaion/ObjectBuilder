@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<application xmlns="http://ns.adobe.com/air/application/51.2">
+    <id>br.com.ninjaways.MapUsedIdGenerator</id>
+    <filename>MapUsedIdGenerator</filename>
+    <name>Map Used ID Generator</name>
+    <versionNumber>1.0.0</versionNumber>
+    <versionLabel>1.0.0</versionLabel>
+
+    <allowMultipleInstances>true</allowMultipleInstances>
+    <supportedProfiles>desktop extendedDesktop</supportedProfiles>
+
+    <initialWindow>
+        <content>MapUsedIdGenerator.swf</content>
+        <autoOrients>false</autoOrients>
+        <fullScreen>false</fullScreen>
+        <visible>true</visible>
+        <width>820</width>
+        <height>560</height>
+        <minSize>720 480</minSize>
+        <requestedDisplayResolution>high</requestedDisplayResolution>
+    </initialWindow>
+
+    <supportedLanguages>pt en</supportedLanguages>
+    <architecture>64</architecture>
+</application>
