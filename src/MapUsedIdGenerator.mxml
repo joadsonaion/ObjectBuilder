@@ -39,6 +39,7 @@
                 frameGroupsCheck.selected = true;
                 compactClientCheck.selected = true;
                 cleanupModeCheck.selected = true;
+                mapXmlTrimCheck.selected = true;
                 cleanupCutoffInput.text = "24202";
                 appendLog("Pronto. Selecione mapa, items.otb, Tibia.dat e Tibia.spr para gerar cliente compacto.");
             }
@@ -146,7 +147,9 @@
 
                 runButton.enabled = false;
                 appendLog("");
-                if (compactClientCheck.selected && cleanupModeCheck.selected)
+                if (compactClientCheck.selected && mapXmlTrimCheck.selected)
+                    appendLog("Iniciando compactacao hibrida por mapa + items.xml...");
+                else if (compactClientCheck.selected && cleanupModeCheck.selected)
                     appendLog("Iniciando cleanup merge completo...");
                 else
                     appendLog(compactClientCheck.selected ? "Iniciando compactacao completa por itens do mapa..." : "Iniciando leitura direta do mapa...");
@@ -173,7 +176,43 @@
                     var result:Object;
                     if (compactClientCheck.selected)
                     {
-                        if (cleanupModeCheck.selected)
+                        if (mapXmlTrimCheck.selected)
+                        {
+                            result = processor.runCompact(mapFile,
+                                    datFile,
+                                    sprFile,
+                                    otbFile,
+                                    outputDir,
+                                    uint(parseInt(versionInput.text, 10)),
+                                    new ClientFeatures(extendedCheck.selected,
+                                            transparencyCheck.selected,
+                                            improvedAnimationsCheck.selected,
+                                            frameGroupsCheck.selected,
+                                            "default",
+                                            attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
+                                    true,
+                                    appendLog);
+
+                            appendLog("Concluido.");
+                            appendLog("Itens do mapa: " + result.mapUsedOnlyServerItemsCount);
+                            appendLog("Itens extras vindos do items.xml: " + result.extraDefinitionServerItemsCount);
+                            appendLog("Total de server items mantidos: " + result.usedServerItemsCount);
+                            appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
+                            appendLog("Novo max client item ID: " + result.newClientItemsCount);
+                            appendLog("Novos server items: " + result.newServerItemsCount);
+                            appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
+                                    " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
+                            appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
+                            appendLog("DAT: " + result.dat);
+                            appendLog("SPR: " + result.spr);
+                            appendLog("OTB: " + result.otb);
+                            appendLog("XML: " + result.xml);
+                            appendLog("OTFI: " + result.otfi);
+                            appendLog("Mapa remapeado: " + result.map);
+                            appendLog("CSV IDs: " + result.usedCsv);
+                            appendLog("CSV remap: " + result.remapCsv);
+                        }
+                        else if (cleanupModeCheck.selected)
                         {
                             result = processor.runMergedCleanupCompact(mapFile,
                                     datFile,
@@ -220,6 +259,7 @@
                                             frameGroupsCheck.selected,
                                             "default",
                                             attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
+                                    false,
                                     appendLog);
 
                             appendLog("Concluido.");
@@ -368,6 +408,7 @@
     <s:HGroup width="100%" verticalAlign="middle" gap="14">
         <s:CheckBox id="compactClientCheck" label="Gerar cliente compacto DAT/SPR/OTB"/>
         <s:CheckBox id="cleanupModeCheck" label="Modo cleanup merge (ceea262)"/>
+        <s:CheckBox id="mapXmlTrimCheck" label="Podar itens pelo mapa + items.xml"/>
         <s:CheckBox id="rewriteMapCheck" label="Gerar mapa remapeado"/>
         <s:CheckBox id="extendedCheck" label="Extended"/>
         <s:CheckBox id="transparencyCheck" label="Transparency"/>

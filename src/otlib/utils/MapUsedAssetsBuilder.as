@@ -35,6 +35,7 @@ package otlib.utils
     import otlib.core.ClientFeatures;
     import otlib.core.Version;
     import otlib.events.ProgressEvent;
+    import otlib.items.ItemsXmlWriter;
     import otlib.items.OtbWriter;
     import otlib.items.ServerItem;
     import otlib.items.ServerItemList;
@@ -87,6 +88,8 @@ package otlib.utils
         public var mapItemNodesCount:uint;
         public var mapCompactItemsCount:uint;
         public var rewrittenMapItemsCount:uint;
+        public var mapUsedOnlyServerItemsCount:uint;
+        public var extraDefinitionServerItemsCount:uint;
         public var usedServerItemsCount:uint;
         public var oldUsedClientItemsCount:uint;
         public var newClientItemsCount:uint;
@@ -123,7 +126,8 @@ package otlib.utils
                 usedIdsFile:File,
                 csvFile:File,
                 version:Version,
-                features:ClientFeatures):Boolean
+                features:ClientFeatures,
+                extraServerIds:Dictionary = null):Boolean
         {
             if (!mapInFile)
                 throw new NullArgumentError("mapInFile");
@@ -150,7 +154,11 @@ package otlib.utils
 
             dispatchProgress(0, 10, "Scanning OTBM item IDs");
             scanMapUsedItemIds(mapInFile);
+            mapUsedOnlyServerItemsCount = countDictionary(m_usedServerIds);
+            mergeExtraServerIds(extraServerIds);
             usedServerItemsCount = countDictionary(m_usedServerIds);
+            extraDefinitionServerItemsCount = usedServerItemsCount > mapUsedOnlyServerItemsCount ?
+                    usedServerItemsCount - mapUsedOnlyServerItemsCount : 0;
             if (usedServerItemsCount == 0)
                 throw new Error("No items were found in the selected OTBM map.");
 
@@ -244,6 +252,8 @@ package otlib.utils
             mapItemNodesCount = 0;
             mapCompactItemsCount = 0;
             rewrittenMapItemsCount = 0;
+            mapUsedOnlyServerItemsCount = 0;
+            extraDefinitionServerItemsCount = 0;
             usedServerItemsCount = 0;
             oldUsedClientItemsCount = 0;
             newClientItemsCount = ThingTypeStorage.MIN_ITEM_ID;
@@ -255,6 +265,17 @@ package otlib.utils
             outfitsCount = 0;
             effectsCount = 0;
             missilesCount = 0;
+        }
+
+        public function writeItemsXml(file:File):Boolean
+        {
+            if (!file)
+                throw new NullArgumentError("file");
+            if (!m_newServerItems)
+                return false;
+
+            var writer:ItemsXmlWriter = new ItemsXmlWriter();
+            return writer.write(file.nativePath, m_newServerItems);
         }
 
         private function scanMapUsedItemIds(file:File):void
@@ -504,6 +525,15 @@ package otlib.utils
             if (serverId == 0)
                 return;
             m_usedServerIds[serverId] = true;
+        }
+
+        private function mergeExtraServerIds(extraServerIds:Dictionary):void
+        {
+            if (!extraServerIds)
+                return;
+
+            for (var key:* in extraServerIds)
+                addUsedServerId(uint(key));
         }
 
         private function rewriteItemIdAt(props:ByteArray, offset:uint):void

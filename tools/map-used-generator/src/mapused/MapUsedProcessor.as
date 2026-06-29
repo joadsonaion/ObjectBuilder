@@ -100,6 +100,7 @@ package mapused
                 outputDir:File,
                 versionValue:uint,
                 features:ClientFeatures,
+                includeXmlDefinitions:Boolean = false,
                 progress:Function = null):Object
         {
             if (!mapFile || !mapFile.exists)
@@ -147,8 +148,10 @@ package mapused
             var datOut:File = outputDir.resolvePath("Tibia.dat");
             var sprOut:File = outputDir.resolvePath("Tibia.spr");
             var otbOut:File = outputDir.resolvePath("items.otb");
+            var xmlOut:File = outputDir.resolvePath("items.xml");
             var usedIdsFile:File = outputDir.resolvePath(baseName + "_map_used_server_ids.csv");
             var remapCsv:File = outputDir.resolvePath(baseName + "_map_item_remap.csv");
+            var extraServerIds:Dictionary = includeXmlDefinitions ? buildXmlDefinedServerIds(serverItems) : null;
 
             var builder:MapUsedAssetsBuilder = new MapUsedAssetsBuilder(objects, sprites, serverItems);
             if (progress != null)
@@ -165,10 +168,14 @@ package mapused
                     usedIdsFile,
                     remapCsv,
                     version,
-                    features))
+                    features,
+                    extraServerIds))
             {
                 throw new Error("Falha ao gerar cliente compacto.");
             }
+
+            if (!builder.writeItemsXml(xmlOut))
+                throw new Error("Falha ao gerar items.xml do cliente compacto.");
 
             var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
             otfi.save(outputDir.resolvePath("Tibia.otfi"));
@@ -177,11 +184,14 @@ package mapused
                 dat: datOut.nativePath,
                 spr: sprOut.nativePath,
                 otb: otbOut.nativePath,
+                xml: xmlOut.nativePath,
                 map: mapOut.nativePath,
                 otfi: outputDir.resolvePath("Tibia.otfi").nativePath,
                 usedCsv: usedIdsFile.nativePath,
                 remapCsv: remapCsv.nativePath,
                 usedServerItemsCount: builder.usedServerItemsCount,
+                mapUsedOnlyServerItemsCount: builder.mapUsedOnlyServerItemsCount,
+                extraDefinitionServerItemsCount: builder.extraDefinitionServerItemsCount,
                 oldUsedClientItemsCount: builder.oldUsedClientItemsCount,
                 newClientItemsCount: builder.newClientItemsCount,
                 newServerItemsCount: builder.newServerItemsCount,
@@ -567,6 +577,40 @@ package mapused
                     throw new Error("Novo server ID passou de 65535. Use menos itens ou outro formato.");
                 m_oldToNew[oldServerId] = nextId++;
             }
+        }
+
+        private function buildXmlDefinedServerIds(serverItems:ServerItemStorage):Dictionary
+        {
+            var result:Dictionary = new Dictionary();
+            if (!serverItems || !serverItems.loaded || !serverItems.items)
+                return result;
+
+            for each (var item:ServerItem in serverItems.items.toArray())
+            {
+                if (!item || item.id == 0)
+                    continue;
+                if (hasXmlDefinition(item))
+                    result[item.id] = true;
+            }
+
+            return result;
+        }
+
+        private function hasXmlDefinition(item:ServerItem):Boolean
+        {
+            if (!item)
+                return false;
+            if (item.nameXml && item.nameXml.length > 0)
+                return true;
+
+            var attrs:Dictionary = item.getXmlAttributes();
+            if (!attrs)
+                return false;
+
+            for (var key:* in attrs)
+                return true;
+
+            return false;
         }
 
         private function sortedUsedIds():Array
