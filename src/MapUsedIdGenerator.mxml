@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009"
+        xmlns:s="library://ns.adobe.com/flex/spark"
+        xmlns:mx="library://ns.adobe.com/flex/mx"
+        title="Map Used ID Generator"
+        width="920"
+        height="680"
+        minWidth="720"
+        minHeight="480"
+        backgroundColor="#1f1f1f"
+        color="#f5f5f5"
+        fontSize="13"
+        applicationComplete="initApp()">
+
+    <fx:Script>
+        <![CDATA[
+            import flash.events.Event;
+            import flash.filesystem.File;
+            import flash.net.FileFilter;
+            import flash.utils.setTimeout;
+
+            import mapused.MapUsedProcessor;
+
+            import otlib.core.ClientFeatures;
+
+            private var mapFile:File;
+            private var otbFile:File;
+            private var datFile:File;
+            private var sprFile:File;
+            private var outputDir:File;
+
+            private function initApp():void
+            {
+                startIdInput.text = "100";
+                versionInput.text = "860";
+                extendedCheck.selected = true;
+                transparencyCheck.selected = true;
+                improvedAnimationsCheck.selected = true;
+                frameGroupsCheck.selected = true;
+                compactClientCheck.selected = true;
+                appendLog("Pronto. Selecione mapa, items.otb, Tibia.dat e Tibia.spr para gerar cliente compacto.");
+            }
+
+            private function browseMap():void
+            {
+                var file:File = mapFile || File.documentsDirectory;
+                file.addEventListener(Event.SELECT, mapSelected);
+                file.browseForOpen("Selecionar mapa OTBM", [new FileFilter("OTBM Map", "*.otbm")]);
+            }
+
+            private function mapSelected(event:Event):void
+            {
+                mapFile = event.target as File;
+                mapFile.removeEventListener(Event.SELECT, mapSelected);
+                mapInput.text = mapFile.nativePath;
+                if (!outputDir && mapFile.parent)
+                {
+                    outputDir = mapFile.parent.resolvePath("map_used_generator");
+                    outputInput.text = outputDir.nativePath;
+                }
+            }
+
+            private function browseOtb():void
+            {
+                var file:File = otbFile || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
+                file.addEventListener(Event.SELECT, otbSelected);
+                file.browseForOpen("Selecionar items.otb", [new FileFilter("items.otb", "*.otb")]);
+            }
+
+            private function otbSelected(event:Event):void
+            {
+                otbFile = event.target as File;
+                otbFile.removeEventListener(Event.SELECT, otbSelected);
+                otbInput.text = otbFile.nativePath;
+            }
+
+            private function browseDat():void
+            {
+                var file:File = datFile || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
+                file.addEventListener(Event.SELECT, datSelected);
+                file.browseForOpen("Selecionar Tibia.dat", [new FileFilter("Tibia.dat", "*.dat")]);
+            }
+
+            private function datSelected(event:Event):void
+            {
+                datFile = event.target as File;
+                datFile.removeEventListener(Event.SELECT, datSelected);
+                datInput.text = datFile.nativePath;
+            }
+
+            private function browseSpr():void
+            {
+                var file:File = sprFile || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
+                file.addEventListener(Event.SELECT, sprSelected);
+                file.browseForOpen("Selecionar Tibia.spr", [new FileFilter("Tibia.spr", "*.spr")]);
+            }
+
+            private function sprSelected(event:Event):void
+            {
+                sprFile = event.target as File;
+                sprFile.removeEventListener(Event.SELECT, sprSelected);
+                sprInput.text = sprFile.nativePath;
+            }
+
+            private function browseOutput():void
+            {
+                var dir:File = outputDir || (mapFile && mapFile.parent ? mapFile.parent : File.documentsDirectory);
+                dir.addEventListener(Event.SELECT, outputSelected);
+                dir.browseForDirectory("Selecionar pasta de saida");
+            }
+
+            private function outputSelected(event:Event):void
+            {
+                outputDir = event.target as File;
+                outputDir.removeEventListener(Event.SELECT, outputSelected);
+                outputInput.text = outputDir.nativePath;
+            }
+
+            private function runGenerator():void
+            {
+                if (mapInput.text.length > 0)
+                    mapFile = new File(mapInput.text);
+                if (otbInput.text.length > 0)
+                    otbFile = new File(otbInput.text);
+                if (datInput.text.length > 0)
+                    datFile = new File(datInput.text);
+                if (sprInput.text.length > 0)
+                    sprFile = new File(sprInput.text);
+                if (outputInput.text.length > 0)
+                    outputDir = new File(outputInput.text);
+
+                if (!mapFile || !mapFile.exists)
+                {
+                    appendLog("ERRO: selecione um mapa .otbm valido.");
+                    return;
+                }
+
+                var startId:uint = parseInt(startIdInput.text, 10);
+                if (startId == 0 || isNaN(Number(startIdInput.text)))
+                {
+                    appendLog("ERRO: ID inicial invalido.");
+                    return;
+                }
+
+                runButton.enabled = false;
+                appendLog("");
+                appendLog(compactClientCheck.selected ? "Iniciando compactacao completa..." : "Iniciando leitura direta do mapa...");
+                appendLog("Mapa: " + mapFile.nativePath);
+                if (otbFile && otbFile.exists)
+                    appendLog("OTB: " + otbFile.nativePath);
+                else
+                    appendLog("OTB: nao selecionado; CSV sai sem client_id/nome.");
+                if (compactClientCheck.selected)
+                {
+                    appendLog("DAT: " + (datFile ? datFile.nativePath : ""));
+                    appendLog("SPR: " + (sprFile ? sprFile.nativePath : ""));
+                }
+                appendLog("Saida: " + (outputDir ? outputDir.nativePath : mapFile.parent.resolvePath("map_used_generator").nativePath));
+
+                setTimeout(doRunGenerator, 60);
+            }
+
+            private function doRunGenerator():void
+            {
+                try
+                {
+                    var processor:MapUsedProcessor = new MapUsedProcessor();
+                    var result:Object;
+                    if (compactClientCheck.selected)
+                    {
+                        result = processor.runCompact(mapFile,
+                                datFile,
+                                sprFile,
+                                otbFile,
+                                outputDir,
+                                uint(parseInt(versionInput.text, 10)),
+                                new ClientFeatures(extendedCheck.selected,
+                                        transparencyCheck.selected,
+                                        improvedAnimationsCheck.selected,
+                                        frameGroupsCheck.selected,
+                                        "default",
+                                        attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
+                                appendLog);
+
+                        appendLog("Concluido.");
+                        appendLog("Itens de mapa usados: " + result.usedServerItemsCount);
+                        appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
+                        appendLog("Novo max client item ID: " + result.newClientItemsCount);
+                        appendLog("Novos server items: " + result.newServerItemsCount);
+                        appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
+                                " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
+                        appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
+                        appendLog("DAT: " + result.dat);
+                        appendLog("SPR: " + result.spr);
+                        appendLog("OTB: " + result.otb);
+                        appendLog("OTFI: " + result.otfi);
+                        appendLog("Mapa remapeado: " + result.map);
+                        appendLog("CSV IDs: " + result.usedCsv);
+                        appendLog("CSV remap: " + result.remapCsv);
+                    }
+                    else
+                    {
+                        result = processor.run(mapFile,
+                                otbFile,
+                                outputDir,
+                                uint(parseInt(startIdInput.text, 10)),
+                                rewriteMapCheck.selected);
+
+                        appendLog("Concluido.");
+                        appendLog("IDs unicos usados: " + result.usedServerItemsCount);
+                        appendLog("Item nodes: " + result.mapItemNodesCount);
+                        appendLog("Tile compact items: " + result.mapCompactItemsCount);
+                        appendLog("Referencias remapeadas: " + result.rewrittenMapItemsCount);
+                        appendLog("CSV IDs: " + result.usedCsv);
+                        appendLog("CSV remap: " + result.remapCsv);
+                        if (result.remappedMap && result.remappedMap.length > 0)
+                            appendLog("Mapa remapeado: " + result.remappedMap);
+                    }
+                }
+                catch (error:Error)
+                {
+                    appendLog("ERRO: " + error.message);
+                    if (error.getStackTrace())
+                        appendLog(error.getStackTrace());
+                }
+                finally
+                {
+                    runButton.enabled = true;
+                }
+            }
+
+            private function appendLog(message:String):void
+            {
+                logArea.text += message + "\n";
+                logArea.validateNow();
+                logArea.scroller.verticalScrollBar.value = logArea.scroller.verticalScrollBar.maximum;
+            }
+        ]]>
+    </fx:Script>
+
+    <fx:Style>
+        @namespace s "library://ns.adobe.com/flex/spark";
+        @namespace mx "library://ns.adobe.com/flex/mx";
+
+        s|TextInput {
+            contentBackgroundColor: #101010;
+            color: #ffffff;
+            borderColor: #6a6a6a;
+            focusColor: #8ec8ff;
+        }
+
+        s|Button {
+            chromeColor: #4a4a4a;
+            color: #ffffff;
+        }
+
+        s|CheckBox {
+            color: #ffffff;
+        }
+
+        s|TextArea {
+            contentBackgroundColor: #101010;
+            color: #ffffff;
+            borderColor: #6a6a6a;
+        }
+    </fx:Style>
+
+    <s:layout>
+        <s:VerticalLayout paddingLeft="14" paddingRight="14" paddingTop="12" paddingBottom="12" gap="10"/>
+    </s:layout>
+
+    <s:Label text="Gera CSV/mapa remapeado ou um cliente compacto completo com DAT/SPR/items.otb baseado nos itens usados pelo mapa."/>
+
+    <s:VGroup width="100%" gap="6">
+        <s:Label text="Mapa .otbm"/>
+        <s:HGroup width="100%" gap="8">
+            <s:TextInput id="mapInput" width="100%"/>
+            <s:Button label="Procurar" width="110" click="browseMap()"/>
+        </s:HGroup>
+    </s:VGroup>
+
+    <s:VGroup width="100%" gap="6">
+        <s:Label text="items.otb opcional"/>
+        <s:HGroup width="100%" gap="8">
+            <s:TextInput id="otbInput" width="100%"/>
+            <s:Button label="Procurar" width="110" click="browseOtb()"/>
+        </s:HGroup>
+    </s:VGroup>
+
+    <s:HGroup width="100%" gap="10">
+        <s:VGroup width="50%" gap="6">
+            <s:Label text="Tibia.dat para cliente compacto"/>
+            <s:HGroup width="100%" gap="8">
+                <s:TextInput id="datInput" width="100%"/>
+                <s:Button label="Procurar" width="110" click="browseDat()"/>
+            </s:HGroup>
+        </s:VGroup>
+
+        <s:VGroup width="50%" gap="6">
+            <s:Label text="Tibia.spr para cliente compacto"/>
+            <s:HGroup width="100%" gap="8">
+                <s:TextInput id="sprInput" width="100%"/>
+                <s:Button label="Procurar" width="110" click="browseSpr()"/>
+            </s:HGroup>
+        </s:VGroup>
+    </s:HGroup>
+
+    <s:VGroup width="100%" gap="6">
+        <s:Label text="Pasta de saida"/>
+        <s:HGroup width="100%" gap="8">
+            <s:TextInput id="outputInput" width="100%"/>
+            <s:Button label="Procurar" width="110" click="browseOutput()"/>
+        </s:HGroup>
+    </s:VGroup>
+
+    <s:HGroup width="100%" verticalAlign="middle" gap="16">
+        <s:Label text="Novo server ID inicial"/>
+        <s:TextInput id="startIdInput" width="90"/>
+        <s:Label text="Versao"/>
+        <s:TextInput id="versionInput" width="70"/>
+        <s:Label text="Attr"/>
+        <s:TextInput id="attributeServerInput" width="90"/>
+    </s:HGroup>
+
+    <s:HGroup width="100%" verticalAlign="middle" gap="14">
+        <s:CheckBox id="compactClientCheck" label="Gerar cliente compacto DAT/SPR/OTB"/>
+        <s:CheckBox id="rewriteMapCheck" label="Gerar mapa remapeado"/>
+        <s:CheckBox id="extendedCheck" label="Extended"/>
+        <s:CheckBox id="transparencyCheck" label="Transparency"/>
+        <s:CheckBox id="improvedAnimationsCheck" label="Improved anim"/>
+        <s:CheckBox id="frameGroupsCheck" label="Frame groups"/>
+        <s:Spacer width="100%"/>
+        <s:Button id="runButton" label="Gerar" width="140" click="runGenerator()"/>
+    </s:HGroup>
+
+    <s:TextArea id="logArea" width="100%" height="100%" editable="false"/>
+</s:WindowedApplication>

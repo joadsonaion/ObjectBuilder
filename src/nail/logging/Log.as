@@ -53,31 +53,43 @@ package nail.logging
 
         public static function debug(message:String, stack:String = null, id:uint = 0):void
         {
+            if (!commnunicator)
+                return;
             commnunicator.sendCommand(new LogCommand(Log.DEBUG, message, stack, id));
         }
 
         public static function info(message:String, stack:String = null, id:uint = 0):void
         {
+            if (!commnunicator)
+                return;
             commnunicator.sendCommand(new LogCommand(Log.INFO, message, stack, id));
         }
 
         public static function warn(message:String, stack:String = null, id:uint = 0):void
         {
+            if (!commnunicator)
+                return;
             commnunicator.sendCommand(new LogCommand(Log.WARN, message, stack, id));
         }
 
         public static function error(message:String, stack:String = null, id:uint = 0):void
         {
+            if (!commnunicator)
+                return;
             commnunicator.sendCommand(new LogCommand(Log.ERROR, message, stack, id));
         }
 
         public static function fatal(message:String, stack:String = null, id:uint = 0):void
         {
+            if (!commnunicator)
+                return;
             commnunicator.sendCommand(new LogCommand(Log.FATAL, message, stack, id));
         }
 
         public static function log(level:uint, message:String, stack:String = null, id:uint = 0):void
         {
+            if (!commnunicator)
+                return;
             commnunicator.sendCommand(new LogCommand(level, message, stack, id));
         }
     }
