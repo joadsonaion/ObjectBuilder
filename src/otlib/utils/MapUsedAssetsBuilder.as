@@ -163,13 +163,13 @@ package otlib.utils
             dispatchProgress(3, 10, "Rewriting OTBM map IDs");
             rewriteMapFile(mapInFile, mapOutFile);
 
-            dispatchProgress(4, 10, "Creating minimal non-map categories");
-            var outfitList:Dictionary = new Dictionary();
-            outfitsCount = ThingTypeStorage.MIN_OUTFIT_ID;
-            var effectList:Dictionary = new Dictionary();
-            effectsCount = ThingTypeStorage.MIN_EFFECT_ID;
-            var missileList:Dictionary = new Dictionary();
-            missilesCount = ThingTypeStorage.MIN_MISSILE_ID;
+            dispatchProgress(4, 10, "Preserving outfits, effects and missiles");
+            var outfitList:Dictionary = clonePreservedCategory(ThingCategory.OUTFIT, m_objects.outfits, m_objects.outfitsCount);
+            outfitsCount = m_objects.outfitsCount;
+            var effectList:Dictionary = clonePreservedCategory(ThingCategory.EFFECT, m_objects.effects, m_objects.effectsCount);
+            effectsCount = m_objects.effectsCount;
+            var missileList:Dictionary = clonePreservedCategory(ThingCategory.MISSILE, m_objects.missiles, m_objects.missilesCount);
+            missilesCount = m_objects.missilesCount;
 
             newSpriteCount = m_nextSpriteId > 1 ? m_nextSpriteId - 1 : 1;
             removedSpritesCount = oldSpriteCount > newSpriteCount ? oldSpriteCount - newSpriteCount : 0;
