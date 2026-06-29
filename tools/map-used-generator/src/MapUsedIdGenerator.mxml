@@ -211,6 +211,7 @@
                             appendLog("Mapa remapeado: " + result.map);
                             appendLog("CSV IDs: " + result.usedCsv);
                             appendLog("CSV remap: " + result.remapCsv);
+                            appendLog("Use o mapa remapeado somente com o items.otb/items.xml/Tibia.dat/Tibia.spr gerados nesta pasta.");
                         }
                         else if (cleanupModeCheck.selected)
                         {

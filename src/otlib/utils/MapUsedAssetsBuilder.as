@@ -36,6 +36,7 @@ package otlib.utils
     import otlib.core.Version;
     import otlib.events.ProgressEvent;
     import otlib.items.ItemsXmlWriter;
+    import otlib.items.OtbReader;
     import otlib.items.OtbWriter;
     import otlib.items.ServerItem;
     import otlib.items.ServerItemList;
@@ -69,6 +70,7 @@ package otlib.utils
         private var m_mapRoot:Object;
         private var m_usedServerIds:Dictionary;
         private var m_oldServerToNewServer:Dictionary;
+        private var m_newServerToClient:Dictionary;
         private var m_oldClientToNewClient:Dictionary;
         private var m_thingKeyToNewClient:Dictionary;
         private var m_newItems:Dictionary;
@@ -211,6 +213,7 @@ package otlib.utils
             var writer:OtbWriter = new OtbWriter(m_newServerItems);
             if (!writer.write(otbFile))
                 return false;
+            validateWrittenOtb(otbFile);
 
             dispatchProgress(8, 10, "Rewritten OTBM map ready");
 
@@ -227,6 +230,7 @@ package otlib.utils
             m_mapRoot = null;
             m_usedServerIds = new Dictionary();
             m_oldServerToNewServer = new Dictionary();
+            m_newServerToClient = new Dictionary();
             m_oldClientToNewClient = new Dictionary();
             m_thingKeyToNewClient = new Dictionary();
             m_newItems = new Dictionary();
@@ -585,6 +589,7 @@ package otlib.utils
                 if (newServerId > 0xFFFF)
                     throw new Error("The map uses more than 65436 server items. Tibia 8.60 OTBM/OTB item IDs cannot exceed 65535.");
                 m_oldServerToNewServer[oldServerId] = newServerId;
+                m_newServerToClient[newServerId] = newClientId;
 
                 var clone:ServerItem = serverItem.clone();
                 clone.id = newServerId;
@@ -604,6 +609,25 @@ package otlib.utils
             oldUsedClientItemsCount = countDictionary(usedClientIds);
             newServerItemsCount = m_newServerItems.count;
             dispatchProgress(2, 10, "Mapped " + newServerItemsCount + " server items");
+        }
+
+        private function validateWrittenOtb(file:File):void
+        {
+            var reader:OtbReader = new OtbReader();
+            if (!reader.read(file))
+                throw new Error("Generated items.otb could not be read back for validation.");
+
+            for (var key:* in m_newServerToClient)
+            {
+                var serverId:uint = uint(key);
+                var expectedClientId:uint = uint(m_newServerToClient[key]);
+                var item:ServerItem = reader.items.getItemById(serverId);
+                if (!item)
+                    throw new Error("Generated items.otb validation failed: missing server ID " + serverId + ".");
+                if (item.clientId != expectedClientId)
+                    throw new Error("Generated items.otb validation failed: server ID " + serverId +
+                            " points to client ID " + item.clientId + " instead of " + expectedClientId + ".");
+            }
         }
 
         private function getOrCreateClientItem(thing:ThingType, oldClientId:uint):uint
