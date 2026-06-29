@@ -271,6 +271,20 @@ package otlib.sprites
             return _hash;
         }
 
+        public function getStorageHash():String
+        {
+            if (_compressedPixels.length == 0)
+                return null;
+
+            // Map compaction compares large merged SPR files. Hashing their
+            // encoded RLE payload avoids decoding every 32x32 sprite first.
+            var position:uint = _compressedPixels.position;
+            _compressedPixels.position = 0;
+            var hash:String = MD5.hashBytes(_compressedPixels);
+            _compressedPixels.position = position;
+            return hash;
+        }
+
         public function clone():Sprite
         {
             var sprite:Sprite = new Sprite(_id, _transparent);

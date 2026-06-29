@@ -662,7 +662,7 @@ package otlib.utils
                 return String(m_spriteHashes[spriteId]);
 
             var sprite:Sprite = m_sprites.getSprite(spriteId);
-            var hash:String = (!sprite || sprite.isEmpty) ? "missing:" + spriteId : sprite.getHash();
+            var hash:String = (!sprite || sprite.isEmpty) ? "missing:" + spriteId : sprite.getStorageHash();
             if (!hash)
                 hash = "missing:" + spriteId;
             m_spriteHashes[spriteId] = hash;
