@@ -3,8 +3,8 @@
     <id>br.com.ninjaways.MapUsedIdGenerator</id>
     <filename>MapUsedIdGenerator</filename>
     <name>Map Used ID Generator</name>
-    <versionNumber>1.0.6</versionNumber>
-    <versionLabel>1.0.6</versionLabel>
+    <versionNumber>1.0.7</versionNumber>
+    <versionLabel>1.0.7</versionLabel>
 
     <allowMultipleInstances>true</allowMultipleInstances>
     <supportedProfiles>desktop extendedDesktop</supportedProfiles>

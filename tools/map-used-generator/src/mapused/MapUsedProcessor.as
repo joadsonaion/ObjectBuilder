@@ -101,7 +101,8 @@ package mapused
                 versionValue:uint,
                 features:ClientFeatures,
                 includeXmlDefinitions:Boolean = false,
-                progress:Function = null):Object
+                progress:Function = null,
+                extraXmlDir:File = null):Object
         {
             if (!mapFile || !mapFile.exists)
                 throw new Error("Selecione um mapa .otbm valido.");
@@ -152,6 +153,19 @@ package mapused
             var usedIdsFile:File = outputDir.resolvePath(baseName + "_map_used_server_ids.csv");
             var remapCsv:File = outputDir.resolvePath(baseName + "_map_item_remap.csv");
             var extraServerIds:Dictionary = includeXmlDefinitions ? buildXmlDefinedServerIds(serverItems) : null;
+            var extraXmlSource:File = (includeXmlDefinitions || extraXmlDir) ?
+                    resolveExtraXmlFolder(otbFile, extraXmlDir) : null;
+            var extraXmlScanFiles:uint = 0;
+            var extraXmlReferencedItems:uint = 0;
+            if (extraXmlSource)
+            {
+                if (progress != null)
+                    progress("Scanning XML extra item IDs");
+                var xmlReferenceScanner:XmlItemReferenceRemapper = new XmlItemReferenceRemapper();
+                extraServerIds = mergeDictionary(extraServerIds, xmlReferenceScanner.collectReferencedItemIds(extraXmlSource));
+                extraXmlScanFiles = xmlReferenceScanner.filesCount;
+                extraXmlReferencedItems = xmlReferenceScanner.referencedItemsCount;
+            }
 
             var builder:MapUsedAssetsBuilder = new MapUsedAssetsBuilder(objects, sprites, serverItems);
             if (progress != null)
@@ -182,7 +196,31 @@ package mapused
             var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
             otfi.save(outputDir.resolvePath("Tibia.otfi"));
             var serverItemsDir:File = writeGeneratedServerItemsFolder(outputDir, otbOut, xmlOut);
-            var readmeFile:File = writeCompactReadme(outputDir, datOut, sprOut, otbOut, xmlOut, serverItemsDir, mapOut);
+            var extraXmlOutDir:File = null;
+            var extraXmlRemappedFiles:uint = 0;
+            var extraXmlRemappedValues:uint = 0;
+            var extraXmlUnresolvedItems:uint = 0;
+            if (extraXmlSource)
+            {
+                if (progress != null)
+                    progress("Remapeando XML extra");
+                extraXmlOutDir = outputDir.resolvePath("server_xml_use_this");
+                var xmlRemapper:XmlItemReferenceRemapper = new XmlItemReferenceRemapper();
+                xmlRemapper.copyRemappedFolder(extraXmlSource, extraXmlOutDir, builder.getServerIdRemap());
+                extraXmlRemappedFiles = xmlRemapper.filesCount;
+                extraXmlRemappedValues = xmlRemapper.remappedValuesCount;
+                extraXmlUnresolvedItems = xmlRemapper.unresolvedItemIdsCount;
+            }
+
+            var readmeFile:File = writeCompactReadme(outputDir,
+                    datOut,
+                    sprOut,
+                    otbOut,
+                    xmlOut,
+                    serverItemsDir,
+                    mapOut,
+                    extraXmlSource,
+                    extraXmlOutDir);
 
             return {
                 dat: datOut.nativePath,
@@ -195,6 +233,13 @@ package mapused
                 readme: readmeFile.nativePath,
                 usedCsv: usedIdsFile.nativePath,
                 remapCsv: remapCsv.nativePath,
+                extraXmlSource: extraXmlSource ? extraXmlSource.nativePath : "",
+                extraXmlOut: extraXmlOutDir ? extraXmlOutDir.nativePath : "",
+                extraXmlScanFiles: extraXmlScanFiles,
+                extraXmlReferencedItems: extraXmlReferencedItems,
+                extraXmlRemappedFiles: extraXmlRemappedFiles,
+                extraXmlRemappedValues: extraXmlRemappedValues,
+                extraXmlUnresolvedItems: extraXmlUnresolvedItems,
                 usedServerItemsCount: builder.usedServerItemsCount,
                 mapUsedOnlyServerItemsCount: builder.mapUsedOnlyServerItemsCount,
                 extraDefinitionServerItemsCount: builder.extraDefinitionServerItemsCount,
@@ -226,7 +271,9 @@ package mapused
                 otbOut:File,
                 xmlOut:File,
                 serverItemsDir:File,
-                mapOut:File):File
+                mapOut:File,
+                extraXmlSource:File = null,
+                extraXmlOutDir:File = null):File
         {
             var readme:File = outputDir.resolvePath("LEIA_ANTES.txt");
             var stream:FileStream = new FileStream();
@@ -246,6 +293,11 @@ package mapused
             stream.writeUTFBytes("  Copie/aponte items.otb: " + otbOut.nativePath + File.lineEnding);
             stream.writeUTFBytes("  Copie/aponte items.xml: " + xmlOut.nativePath + File.lineEnding);
             stream.writeUTFBytes("  Mapa remapeado: " + mapOut.nativePath + File.lineEnding);
+            if (extraXmlSource && extraXmlOutDir)
+            {
+                stream.writeUTFBytes("  XML extra original: " + extraXmlSource.nativePath + File.lineEnding);
+                stream.writeUTFBytes("  XML extra remapeado: " + extraXmlOutDir.nativePath + File.lineEnding);
+            }
             stream.close();
             return readme;
         }
@@ -807,6 +859,38 @@ package mapused
             if (item.name && item.name.length > 0)
                 return item.name;
             return "";
+        }
+
+        private function resolveExtraXmlFolder(otbFile:File, selectedDir:File):File
+        {
+            if (selectedDir && selectedDir.exists && selectedDir.isDirectory)
+                return selectedDir;
+
+            if (!otbFile || !otbFile.parent || !otbFile.parent.parent)
+                return null;
+
+            var dataDir:File = otbFile.parent.parent;
+            var xmlDir:File = dataDir.resolvePath("XML");
+            if (xmlDir.exists && xmlDir.isDirectory)
+                return xmlDir;
+
+            xmlDir = dataDir.resolvePath("xml");
+            if (xmlDir.exists && xmlDir.isDirectory)
+                return xmlDir;
+
+            return null;
+        }
+
+        private function mergeDictionary(target:Dictionary, source:Dictionary):Dictionary
+        {
+            if (!target)
+                target = new Dictionary();
+            if (!source)
+                return target;
+
+            for (var key:* in source)
+                target[uint(key)] = true;
+            return target;
         }
 
         private function csv(value:String):String

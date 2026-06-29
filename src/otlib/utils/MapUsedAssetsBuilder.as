@@ -291,6 +291,17 @@ package otlib.utils
             return writer.write(file.nativePath, m_newServerItems);
         }
 
+        public function getServerIdRemap():Dictionary
+        {
+            var result:Dictionary = new Dictionary();
+            if (!m_oldServerToNewServer)
+                return result;
+
+            for (var key:* in m_oldServerToNewServer)
+                result[uint(key)] = uint(m_oldServerToNewServer[key]);
+            return result;
+        }
+
         private function scanMapUsedItemIds(file:File):void
         {
             if (!file.exists)

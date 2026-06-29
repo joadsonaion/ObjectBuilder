@@ -27,6 +27,7 @@
             private var otbFile:File;
             private var datFile:File;
             private var sprFile:File;
+            private var extraXmlDir:File;
             private var outputDir:File;
 
             private function initApp():void
@@ -75,6 +76,7 @@
                 otbFile = event.target as File;
                 otbFile.removeEventListener(Event.SELECT, otbSelected);
                 otbInput.text = otbFile.nativePath;
+                inferExtraXmlDir();
             }
 
             private function browseDat():void
@@ -112,6 +114,38 @@
                 dir.browseForDirectory("Selecionar pasta de saida");
             }
 
+            private function browseExtraXml():void
+            {
+                var dir:File = extraXmlDir || (otbFile && otbFile.parent && otbFile.parent.parent ?
+                        otbFile.parent.parent.resolvePath("XML") : File.documentsDirectory);
+                dir.addEventListener(Event.SELECT, extraXmlSelected);
+                dir.browseForDirectory("Selecionar pasta XML extra");
+            }
+
+            private function extraXmlSelected(event:Event):void
+            {
+                extraXmlDir = event.target as File;
+                extraXmlDir.removeEventListener(Event.SELECT, extraXmlSelected);
+                extraXmlInput.text = extraXmlDir.nativePath;
+            }
+
+            private function inferExtraXmlDir():void
+            {
+                if (extraXmlInput.text && extraXmlInput.text.length > 0)
+                    return;
+                if (!otbFile || !otbFile.parent || !otbFile.parent.parent)
+                    return;
+
+                var inferred:File = otbFile.parent.parent.resolvePath("XML");
+                if (!inferred.exists)
+                    inferred = otbFile.parent.parent.resolvePath("xml");
+                if (inferred.exists && inferred.isDirectory)
+                {
+                    extraXmlDir = inferred;
+                    extraXmlInput.text = inferred.nativePath;
+                }
+            }
+
             private function outputSelected(event:Event):void
             {
                 outputDir = event.target as File;
@@ -129,6 +163,8 @@
                     datFile = new File(datInput.text);
                 if (sprInput.text.length > 0)
                     sprFile = new File(sprInput.text);
+                if (extraXmlInput.text.length > 0)
+                    extraXmlDir = new File(extraXmlInput.text);
                 if (outputInput.text.length > 0)
                     outputDir = new File(outputInput.text);
 
@@ -162,6 +198,8 @@
                 {
                     appendLog("DAT: " + (datFile ? datFile.nativePath : ""));
                     appendLog("SPR: " + (sprFile ? sprFile.nativePath : ""));
+                    if (extraXmlDir && extraXmlDir.exists)
+                        appendLog("XML extra: " + extraXmlDir.nativePath);
                 }
                 appendLog("Saida: " + (outputDir ? outputDir.nativePath : mapFile.parent.resolvePath("map_used_generator").nativePath));
 
@@ -191,11 +229,22 @@
                                             "default",
                                             attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
                                     true,
-                                    appendLog);
+                                    appendLog,
+                                    extraXmlDir);
 
                             appendLog("Concluido.");
                             appendLog("Itens do mapa: " + result.mapUsedOnlyServerItemsCount);
                             appendLog("Itens extras vindos do items.xml: " + result.extraDefinitionServerItemsCount);
+                            if (result.extraXmlSource && result.extraXmlSource.length > 0)
+                            {
+                                appendLog("XML extra lido: " + result.extraXmlSource);
+                                appendLog("XML extra arquivos: " + result.extraXmlScanFiles);
+                                appendLog("XML extra itens referenciados: " + result.extraXmlReferencedItems);
+                                appendLog("XML extra remapeado: " + result.extraXmlOut);
+                                appendLog("XML extra valores alterados: " + result.extraXmlRemappedValues);
+                                if (result.extraXmlUnresolvedItems > 0)
+                                    appendLog("XML extra IDs sem remap: " + result.extraXmlUnresolvedItems);
+                            }
                             appendLog("Total de server items mantidos: " + result.usedServerItemsCount);
                             appendLog("Client IDs: compactados e remapeados no items.otb.");
                             appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
@@ -372,6 +421,14 @@
         <s:HGroup width="100%" gap="8">
             <s:TextInput id="otbInput" width="100%"/>
             <s:Button label="Procurar" width="110" click="browseOtb()"/>
+        </s:HGroup>
+    </s:VGroup>
+
+    <s:VGroup width="100%" gap="6">
+        <s:Label text="Pasta XML extra opcional (shop, tasks, quests etc.)"/>
+        <s:HGroup width="100%" gap="8">
+            <s:TextInput id="extraXmlInput" width="100%"/>
+            <s:Button label="Procurar" width="110" click="browseExtraXml()"/>
         </s:HGroup>
     </s:VGroup>
 
