@@ -143,11 +143,8 @@ package otlib.utils
 
             initialize();
 
-            dispatchProgress(0, 10, "Reading OTBM map");
-            readMap(mapInFile);
-
-            dispatchProgress(1, 10, "Collecting map item IDs");
-            collectUsedItemIds(m_mapRoot);
+            dispatchProgress(0, 10, "Scanning OTBM item IDs");
+            scanMapUsedItemIds(mapInFile);
             usedServerItemsCount = countDictionary(m_usedServerIds);
             if (usedServerItemsCount == 0)
                 throw new Error("No items were found in the selected OTBM map.");
@@ -156,7 +153,7 @@ package otlib.utils
             buildItemMaps();
 
             dispatchProgress(3, 10, "Rewriting OTBM map IDs");
-            rewriteMapItemIds(m_mapRoot);
+            rewriteMapFile(mapInFile, mapOutFile);
 
             dispatchProgress(4, 10, "Preserving non-item client IDs");
             var outfitList:Dictionary = clonePreservedCategory(ThingCategory.OUTFIT, m_objects.outfits, m_objects.outfitsCount);
@@ -199,8 +196,7 @@ package otlib.utils
             if (!writer.write(otbFile))
                 return false;
 
-            dispatchProgress(8, 10, "Writing rewritten OTBM map");
-            writeMap(mapOutFile);
+            dispatchProgress(8, 10, "Rewritten OTBM map ready");
 
             dispatchProgress(9, 10, "Writing map item remap CSV");
             writeMapping(csvFile);
@@ -251,7 +247,7 @@ package otlib.utils
             missilesCount = 0;
         }
 
-        private function readMap(file:File):void
+        private function scanMapUsedItemIds(file:File):void
         {
             if (!file.exists)
                 throw new Error("Map file not found: " + file.nativePath);
@@ -264,27 +260,34 @@ package otlib.utils
             stream.close();
 
             var rootOffset:uint = findRootOffset(bytes);
-            m_mapPrefix = new ByteArray();
-            m_mapPrefix.endian = Endian.LITTLE_ENDIAN;
-            bytes.position = 0;
-            if (rootOffset > 0)
-                m_mapPrefix.writeBytes(bytes, 0, rootOffset);
-
             bytes.position = rootOffset;
-            m_mapRoot = readNode(bytes);
+            scanNodeForUsedIds(bytes);
         }
 
-        private function writeMap(file:File):void
+        private function rewriteMapFile(input:File, output:File):void
         {
-            var bytes:ByteArray = new ByteArray();
-            bytes.endian = Endian.LITTLE_ENDIAN;
-            if (m_mapPrefix && m_mapPrefix.length > 0)
-                bytes.writeBytes(m_mapPrefix);
-            writeNode(bytes, m_mapRoot);
+            if (!input.exists)
+                throw new Error("Map file not found: " + input.nativePath);
 
+            var source:ByteArray = new ByteArray();
+            source.endian = Endian.LITTLE_ENDIAN;
             var stream:FileStream = new FileStream();
-            stream.open(file, FileMode.WRITE);
-            stream.writeBytes(bytes);
+            stream.open(input, FileMode.READ);
+            stream.readBytes(source, 0, stream.bytesAvailable);
+            stream.close();
+
+            var rootOffset:uint = findRootOffset(source);
+            var target:ByteArray = new ByteArray();
+            target.endian = Endian.LITTLE_ENDIAN;
+            if (rootOffset > 0)
+                target.writeBytes(source, 0, rootOffset);
+
+            source.position = rootOffset;
+            rewriteNodeTo(source, target);
+
+            stream = new FileStream();
+            stream.open(output, FileMode.WRITE);
+            stream.writeBytes(target);
             stream.close();
         }
 
@@ -305,7 +308,7 @@ package otlib.utils
             throw new Error("Invalid OTBM map: root node marker was not found.");
         }
 
-        private function readNode(bytes:ByteArray):Object
+        private function scanNodeForUsedIds(bytes:ByteArray):void
         {
             if (bytes.bytesAvailable < 2)
                 throw new Error("Invalid OTBM map: unexpected end of node stream.");
@@ -314,12 +317,10 @@ package otlib.utils
             if (marker != NODE_START)
                 throw new Error("Invalid OTBM map: expected node start marker.");
 
-            var node:Object = {
-                type: bytes.readUnsignedByte(),
-                props: new ByteArray(),
-                children: []
-            };
-            ByteArray(node.props).endian = Endian.LITTLE_ENDIAN;
+            var type:uint = bytes.readUnsignedByte();
+            var props:ByteArray = new ByteArray();
+            props.endian = Endian.LITTLE_ENDIAN;
+            var propsScanned:Boolean = false;
 
             while (bytes.bytesAvailable > 0)
             {
@@ -328,37 +329,87 @@ package otlib.utils
                 {
                     if (bytes.bytesAvailable == 0)
                         throw new Error("Invalid OTBM map: dangling escape byte.");
-                    ByteArray(node.props).writeByte(bytes.readUnsignedByte());
+                    props.writeByte(bytes.readUnsignedByte());
                 }
                 else if (value == NODE_START)
                 {
+                    if (!propsScanned)
+                    {
+                        scanNodePropsForUsedIds(type, props);
+                        propsScanned = true;
+                    }
                     bytes.position--;
-                    (node.children as Array).push(readNode(bytes));
+                    scanNodeForUsedIds(bytes);
                 }
                 else if (value == NODE_END)
                 {
-                    ByteArray(node.props).position = 0;
-                    return node;
+                    if (!propsScanned)
+                        scanNodePropsForUsedIds(type, props);
+                    return;
                 }
                 else
                 {
-                    ByteArray(node.props).writeByte(value);
+                    props.writeByte(value);
                 }
             }
 
             throw new Error("Invalid OTBM map: node was not closed.");
         }
 
-        private function writeNode(bytes:ByteArray, node:Object):void
+        private function rewriteNodeTo(source:ByteArray, target:ByteArray):void
         {
-            bytes.writeByte(NODE_START);
-            bytes.writeByte(uint(node.type));
-            writeEscaped(bytes, node.props as ByteArray);
+            if (source.bytesAvailable < 2)
+                throw new Error("Invalid OTBM map: unexpected end of node stream.");
 
-            for each (var child:Object in node.children as Array)
-                writeNode(bytes, child);
+            var marker:uint = source.readUnsignedByte();
+            if (marker != NODE_START)
+                throw new Error("Invalid OTBM map: expected node start marker.");
 
-            bytes.writeByte(NODE_END);
+            var type:uint = source.readUnsignedByte();
+            target.writeByte(NODE_START);
+            target.writeByte(type);
+
+            var props:ByteArray = new ByteArray();
+            props.endian = Endian.LITTLE_ENDIAN;
+            var propsWritten:Boolean = false;
+
+            while (source.bytesAvailable > 0)
+            {
+                var value:uint = source.readUnsignedByte();
+                if (value == ESCAPE_CHAR)
+                {
+                    if (source.bytesAvailable == 0)
+                        throw new Error("Invalid OTBM map: dangling escape byte.");
+                    props.writeByte(source.readUnsignedByte());
+                }
+                else if (value == NODE_START)
+                {
+                    if (!propsWritten)
+                    {
+                        rewriteNodeProps(type, props);
+                        writeEscaped(target, props);
+                        propsWritten = true;
+                    }
+                    source.position--;
+                    rewriteNodeTo(source, target);
+                }
+                else if (value == NODE_END)
+                {
+                    if (!propsWritten)
+                    {
+                        rewriteNodeProps(type, props);
+                        writeEscaped(target, props);
+                    }
+                    target.writeByte(NODE_END);
+                    return;
+                }
+                else
+                {
+                    props.writeByte(value);
+                }
+            }
+
+            throw new Error("Invalid OTBM map: node was not closed.");
         }
 
         private function writeEscaped(bytes:ByteArray, props:ByteArray):void
@@ -377,44 +428,37 @@ package otlib.utils
             props.position = oldPosition;
         }
 
-        private function collectUsedItemIds(node:Object):void
+        private function scanNodePropsForUsedIds(type:uint, props:ByteArray):void
         {
-            var props:ByteArray = node.props as ByteArray;
-            if (uint(node.type) == OTBM_ITEM && props && props.length >= 2)
+            props.position = 0;
+            if (type == OTBM_ITEM && props.length >= 2)
             {
                 mapItemNodesCount++;
                 addUsedServerId(readU16(props, 0));
             }
-            else if ((uint(node.type) == OTBM_TILE || uint(node.type) == OTBM_HOUSETILE) && props)
+            else if (type == OTBM_TILE || type == OTBM_HOUSETILE)
             {
-                scanTileCompactItems(node, false);
+                scanTileCompactItems(type, props, false);
             }
-
-            for each (var child:Object in node.children as Array)
-                collectUsedItemIds(child);
         }
 
-        private function rewriteMapItemIds(node:Object):void
+        private function rewriteNodeProps(type:uint, props:ByteArray):void
         {
-            var props:ByteArray = node.props as ByteArray;
-            if (uint(node.type) == OTBM_ITEM && props && props.length >= 2)
+            props.position = 0;
+            if (type == OTBM_ITEM && props.length >= 2)
             {
                 rewriteItemIdAt(props, 0);
             }
-            else if ((uint(node.type) == OTBM_TILE || uint(node.type) == OTBM_HOUSETILE) && props)
+            else if (type == OTBM_TILE || type == OTBM_HOUSETILE)
             {
-                scanTileCompactItems(node, true);
+                scanTileCompactItems(type, props, true);
             }
-
-            for each (var child:Object in node.children as Array)
-                rewriteMapItemIds(child);
         }
 
-        private function scanTileCompactItems(node:Object, rewrite:Boolean):void
+        private function scanTileCompactItems(type:uint, props:ByteArray, rewrite:Boolean):void
         {
-            var props:ByteArray = node.props as ByteArray;
-            var offset:uint = uint(node.type) == OTBM_HOUSETILE ? 6 : 2;
-            if (!props || props.length <= offset)
+            var offset:uint = type == OTBM_HOUSETILE ? 6 : 2;
+            if (props.length <= offset)
                 return;
 
             while (offset < props.length)
