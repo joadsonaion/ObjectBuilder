@@ -421,17 +421,17 @@ package otlib.things
                     done = false;
                 }
 
-                if (done && !writeThingList(writer, _outfits, MIN_OUTFIT_ID, _outfitsCount))
+                if (done && !writeThingList(writer, _outfits, MIN_OUTFIT_ID, _outfitsCount, ThingCategory.OUTFIT))
                 {
                     done = false;
                 }
 
-                if (done && !writeThingList(writer, _effects, MIN_EFFECT_ID, _effectsCount))
+                if (done && !writeThingList(writer, _effects, MIN_EFFECT_ID, _effectsCount, ThingCategory.EFFECT))
                 {
                     done = false;
                 }
 
-                if (done && !writeThingList(writer, _missiles, MIN_MISSILE_ID, _missilesCount))
+                if (done && !writeThingList(writer, _missiles, MIN_MISSILE_ID, _missilesCount, ThingCategory.MISSILE))
                 {
                     done = false;
                 }
@@ -515,13 +515,13 @@ package otlib.things
                 if (!writeItemList(writer, items, MIN_ITEM_ID, itemsCount))
                     done = false;
 
-                if (done && !writeThingList(writer, outfits, MIN_OUTFIT_ID, outfitsCount))
+                if (done && !writeThingList(writer, outfits, MIN_OUTFIT_ID, outfitsCount, ThingCategory.OUTFIT))
                     done = false;
 
-                if (done && !writeThingList(writer, effects, MIN_EFFECT_ID, effectsCount))
+                if (done && !writeThingList(writer, effects, MIN_EFFECT_ID, effectsCount, ThingCategory.EFFECT))
                     done = false;
 
-                if (done && !writeThingList(writer, missiles, MIN_MISSILE_ID, missilesCount))
+                if (done && !writeThingList(writer, missiles, MIN_MISSILE_ID, missilesCount, ThingCategory.MISSILE))
                     done = false;
 
                 writer.close();
@@ -1202,25 +1202,20 @@ package otlib.things
         protected function writeThingList(writer:MetadataWriter,
                 list:Dictionary,
                 minId:uint,
-                maxId:uint):Boolean
+                maxId:uint,
+                category:String):Boolean
         {
             for (var id:uint = minId; id <= maxId; id++)
             {
                 var thing:ThingType = list[id];
-                if (thing)
-                {
+                if (!thing)
+                    thing = createPlaceholderThing(id, category, writer);
 
-                    if (!writer.writeProperties(thing))
-                        return false;
+                if (!writer.writeProperties(thing))
+                    return false;
 
-                    if (!writer.writeTexturePatterns(thing))
-                        return false;
-
-                }
-                else
-                {
-                    writer.writeByte(ThingSerializer.LAST_FLAG); // Close flags
-                }
+                if (!writer.writeTexturePatterns(thing))
+                    return false;
             }
 
             return true;
@@ -1234,23 +1229,27 @@ package otlib.things
             for (var id:uint = minId; id <= maxId; id++)
             {
                 var item:ThingType = list[id];
-                if (item)
-                {
+                if (!item)
+                    item = createPlaceholderThing(id, ThingCategory.ITEM, writer);
 
-                    if (!writer.writeItemProperties(item))
-                        return false;
+                if (!writer.writeItemProperties(item))
+                    return false;
 
-                    if (!writer.writeTexturePatterns(item))
-                        return false;
+                if (!writer.writeTexturePatterns(item))
+                    return false;
 
-                }
-                else
-                {
-                    writer.writeByte(ThingSerializer.LAST_FLAG); // Close flags
-                }
             }
 
             return true;
+        }
+
+        private function createPlaceholderThing(id:uint, category:String, writer:MetadataWriter):ThingType
+        {
+            var frameGroups:Boolean = writer && writer.features ? writer.features.frameGroups : false;
+            var thing:ThingType = ThingType.create(id, category, frameGroups, getDefaultDuration(category));
+            thing.id = id;
+            thing.category = category;
+            return thing;
         }
 
         private function getDefaultDuration(category:String):uint
