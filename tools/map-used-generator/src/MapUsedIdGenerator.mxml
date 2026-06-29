@@ -208,11 +208,13 @@
                             appendLog("SPR: " + result.spr);
                             appendLog("OTB: " + result.otb);
                             appendLog("XML: " + result.xml);
+                            appendLog("Server Items Folder para ObjectBuilder: " + result.serverItemsDir);
                             appendLog("OTFI: " + result.otfi);
                             appendLog("Mapa remapeado: " + result.map);
                             appendLog("CSV IDs: " + result.usedCsv);
                             appendLog("CSV remap: " + result.remapCsv);
-                            appendLog("Use o mapa remapeado somente com o items.otb/items.xml/Tibia.dat/Tibia.spr gerados nesta pasta.");
+                            appendLog("Instrucoes: " + result.readme);
+                            appendLog("Use a pasta do cliente gerada e o Server Items Folder gerado. Nao use o data/items antigo com este DAT/SPR.");
                         }
                         else if (cleanupModeCheck.selected)
                         {
@@ -275,10 +277,13 @@
                             appendLog("DAT: " + result.dat);
                             appendLog("SPR: " + result.spr);
                             appendLog("OTB: " + result.otb);
+                            appendLog("Server Items Folder para ObjectBuilder: " + result.serverItemsDir);
                             appendLog("OTFI: " + result.otfi);
                             appendLog("Mapa remapeado: " + result.map);
                             appendLog("CSV IDs: " + result.usedCsv);
                             appendLog("CSV remap: " + result.remapCsv);
+                            appendLog("Instrucoes: " + result.readme);
+                            appendLog("Use a pasta do cliente gerada e o Server Items Folder gerado. Nao use o data/items antigo com este DAT/SPR.");
                         }
                     }
                     else

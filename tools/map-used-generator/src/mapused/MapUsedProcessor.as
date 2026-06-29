@@ -180,14 +180,18 @@ package mapused
 
             var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
             otfi.save(outputDir.resolvePath("Tibia.otfi"));
+            var serverItemsDir:File = writeGeneratedServerItemsFolder(outputDir, otbOut, xmlOut);
+            var readmeFile:File = writeCompactReadme(outputDir, datOut, sprOut, otbOut, xmlOut, serverItemsDir, mapOut);
 
             return {
                 dat: datOut.nativePath,
                 spr: sprOut.nativePath,
                 otb: otbOut.nativePath,
                 xml: xmlOut.nativePath,
+                serverItemsDir: serverItemsDir.nativePath,
                 map: mapOut.nativePath,
                 otfi: outputDir.resolvePath("Tibia.otfi").nativePath,
+                readme: readmeFile.nativePath,
                 usedCsv: usedIdsFile.nativePath,
                 remapCsv: remapCsv.nativePath,
                 usedServerItemsCount: builder.usedServerItemsCount,
@@ -202,6 +206,47 @@ package mapused
                 removedSpritesCount: builder.removedSpritesCount,
                 rewrittenMapItemsCount: builder.rewrittenMapItemsCount
             };
+        }
+
+        private function writeGeneratedServerItemsFolder(outputDir:File, otbOut:File, xmlOut:File):File
+        {
+            var serverItemsDir:File = outputDir.resolvePath("server_items_use_this");
+            if (!serverItemsDir.exists)
+                serverItemsDir.createDirectory();
+
+            otbOut.copyTo(serverItemsDir.resolvePath("items.otb"), true);
+            xmlOut.copyTo(serverItemsDir.resolvePath("items.xml"), true);
+            return serverItemsDir;
+        }
+
+        private function writeCompactReadme(outputDir:File,
+                datOut:File,
+                sprOut:File,
+                otbOut:File,
+                xmlOut:File,
+                serverItemsDir:File,
+                mapOut:File):File
+        {
+            var readme:File = outputDir.resolvePath("LEIA_ANTES.txt");
+            var stream:FileStream = new FileStream();
+            stream.open(readme, FileMode.WRITE);
+            stream.writeUTFBytes("CLIENTE COMPACTO GERADO PELO Map Used ID Generator" + File.lineEnding);
+            stream.writeUTFBytes(File.lineEnding);
+            stream.writeUTFBytes("Use estes arquivos juntos. Nao misture Tibia.dat/Tibia.spr compactos com o data/items antigo." + File.lineEnding);
+            stream.writeUTFBytes("Se misturar, o ObjectBuilder/RME mostra server IDs e visuais trocados." + File.lineEnding);
+            stream.writeUTFBytes(File.lineEnding);
+            stream.writeUTFBytes("ObjectBuilder:" + File.lineEnding);
+            stream.writeUTFBytes("  Pasta do Cliente: " + outputDir.nativePath + File.lineEnding);
+            stream.writeUTFBytes("  Server Items Folder: " + serverItemsDir.nativePath + File.lineEnding);
+            stream.writeUTFBytes(File.lineEnding);
+            stream.writeUTFBytes("RME/servidor:" + File.lineEnding);
+            stream.writeUTFBytes("  Copie/aponte Tibia.dat: " + datOut.nativePath + File.lineEnding);
+            stream.writeUTFBytes("  Copie/aponte Tibia.spr: " + sprOut.nativePath + File.lineEnding);
+            stream.writeUTFBytes("  Copie/aponte items.otb: " + otbOut.nativePath + File.lineEnding);
+            stream.writeUTFBytes("  Copie/aponte items.xml: " + xmlOut.nativePath + File.lineEnding);
+            stream.writeUTFBytes("  Mapa remapeado: " + mapOut.nativePath + File.lineEnding);
+            stream.close();
+            return readme;
         }
 
         public function runMergedCleanupCompact(mapFile:File,
