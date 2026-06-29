@@ -8,6 +8,21 @@ package mapused
 
     public class XmlItemReferenceRemapper
     {
+        private static const MIN_SERVER_ITEM_ID:uint = 100;
+
+        private static const SERVER_DATA_FOLDERS:Object = {
+                "XML": true,
+                "actions": true,
+                "creaturescripts": true,
+                "globalevents": true,
+                "lib": true,
+                "movements": true,
+                "npc": true,
+                "spells": true,
+                "talkactions": true,
+                "weapons": true
+            };
+
         public var filesCount:uint;
         public var copiedFilesCount:uint;
         public var remappedValuesCount:uint;
@@ -68,15 +83,19 @@ package mapused
             {
                 var children:Array = file.getDirectoryListing();
                 for each (var child:File in children)
+                {
+                    if (isServerDataRoot(file) && !isAllowedServerDataFolder(child))
+                        continue;
                     scanForReferences(child);
+                }
                 return;
             }
 
-            if (!isXmlFile(file))
+            if (!isRemappableTextFile(file))
                 return;
 
             filesCount++;
-            processXmlText(readText(file).text, null, m_referencedIds);
+            processFileText(file, readText(file).text, null, m_referencedIds);
         }
 
         private function copyFolderInternal(source:File, target:File, remap:Dictionary):void
@@ -88,12 +107,16 @@ package mapused
 
                 var children:Array = source.getDirectoryListing();
                 for each (var child:File in children)
+                {
+                    if (isServerDataRoot(source) && !isAllowedServerDataFolder(child))
+                        continue;
                     copyFolderInternal(child, target.resolvePath(child.name), remap);
+                }
                 return;
             }
 
             copiedFilesCount++;
-            if (!isXmlFile(source))
+            if (!isRemappableTextFile(source))
             {
                 source.copyTo(target, true);
                 return;
@@ -101,8 +124,17 @@ package mapused
 
             filesCount++;
             var loaded:Object = readText(source);
-            var remapped:String = processXmlText(String(loaded.text), remap, null);
+            var remapped:String = processFileText(source, String(loaded.text), remap, null);
             writeText(target, remapped, String(loaded.encoding));
+        }
+
+        private function processFileText(file:File, text:String, remap:Dictionary, collect:Dictionary):String
+        {
+            if (isXmlFile(file))
+                return processXmlText(text, remap, collect);
+            if (isLuaFile(file))
+                return processLuaText(text, remap, collect);
+            return text;
         }
 
         private function processXmlText(text:String, remap:Dictionary, collect:Dictionary):String
@@ -144,11 +176,16 @@ package mapused
                 var value:String = String(match[4]);
                 var normalizedAttr:String = normalizeName(attrName);
 
-                if (isItemListAttribute(normalizedAttr))
+                if (isItemListAttribute(normalizedAttr) ||
+                        isListLikeSingleItemAttribute(normalizedTag, normalizedAttr, value))
+                {
                     value = remapItemList(value, remap, collect);
+                }
                 else if (isSingleItemAttribute(normalizedAttr) ||
                         isItemIdAttributeForTag(normalizedTag, normalizedAttr))
+                {
                     value = remapSingleItemValue(value, remap, collect);
+                }
 
                 result += attrName + separator + quote + value + quote;
                 lastIndex = attrPattern.lastIndex;
@@ -165,28 +202,12 @@ package mapused
                 return value;
 
             var oldId:uint = uint(trimmed);
-            rememberReferenced(oldId, collect);
-
-            if (!remap)
-                return value;
-
-            if (remap[oldId] === undefined)
-            {
-                rememberUnresolved(oldId);
-                return value;
-            }
-
-            var newId:uint = uint(remap[oldId]);
-            if (newId == oldId)
-                return value;
-
-            remappedValuesCount++;
-            return preserveOuterWhitespace(value, String(newId));
+            return preserveOuterWhitespace(value, remapItemNumber(oldId, trimmed, remap, collect));
         }
 
         private function remapItemList(value:String, remap:Dictionary, collect:Dictionary):String
         {
-            var tokenPattern:RegExp = /(^|[,\s;\|])(\d+)(?=\s*(:|[,;\|\s]|$))/g;
+            var tokenPattern:RegExp = /(\d+)\s*-\s*(\d+)|(\d+)/g;
             var result:String = "";
             var lastIndex:int = 0;
             var match:Object;
@@ -195,30 +216,23 @@ package mapused
             {
                 result += value.substring(lastIndex, int(match.index));
 
-                var prefix:String = String(match[1]);
-                var oldText:String = String(match[2]);
-                var oldId:uint = uint(oldText);
-                var replacement:String = oldText;
-
-                rememberReferenced(oldId, collect);
-                if (remap)
+                var original:String = String(match[0]);
+                if (isCountSideOfPair(value, int(match.index)))
                 {
-                    if (remap[oldId] !== undefined)
-                    {
-                        var newId:uint = uint(remap[oldId]);
-                        if (newId != oldId)
-                        {
-                            replacement = String(newId);
-                            remappedValuesCount++;
-                        }
-                    }
-                    else
-                    {
-                        rememberUnresolved(oldId);
-                    }
+                    result += original;
+                    lastIndex = tokenPattern.lastIndex;
+                    continue;
                 }
 
-                result += prefix + replacement;
+                if (match[1] !== undefined && String(match[1]).length > 0)
+                {
+                    result += remapItemRange(String(match[1]), String(match[2]), original, remap, collect);
+                }
+                else
+                {
+                    result += remapItemNumber(uint(match[3]), String(match[3]), remap, collect);
+                }
+
                 lastIndex = tokenPattern.lastIndex;
             }
 
@@ -226,9 +240,129 @@ package mapused
             return result;
         }
 
+        private function remapItemRange(startText:String,
+                endText:String,
+                original:String,
+                remap:Dictionary,
+                collect:Dictionary):String
+        {
+            if (!isUnsignedInteger(startText) || !isUnsignedInteger(endText))
+                return original;
+
+            var start:uint = uint(startText);
+            var end:uint = uint(endText);
+            if (end < start || end - start > 10000)
+                return original;
+
+            var values:Array = [];
+            for (var id:uint = start; id <= end; id++)
+                values.push(remapItemNumber(id, String(id), remap, collect));
+            return values.join(";");
+        }
+
+        private function remapItemNumber(oldId:uint,
+                original:String,
+                remap:Dictionary,
+                collect:Dictionary):String
+        {
+            if (!isServerItemId(oldId))
+                return original;
+
+            rememberReferenced(oldId, collect);
+
+            if (!remap)
+                return original;
+
+            if (remap[oldId] === undefined)
+            {
+                rememberUnresolved(oldId);
+                return original;
+            }
+
+            var newId:uint = uint(remap[oldId]);
+            if (newId == oldId)
+                return original;
+
+            remappedValuesCount++;
+            return String(newId);
+        }
+
+        private function processLuaText(text:String, remap:Dictionary, collect:Dictionary):String
+        {
+            if (!text || text.length == 0)
+                return text;
+
+            text = remapLuaPattern(text,
+                    /(\b(?:itemid|itemId|itemID|item_id|itemtype|itemType|itemTypeId|itemtypeid|rewardItemId|rewarditemid|requiredItemId|requireditemid|consumeItemId|consumeitemid|currencyItemId|currencyitemid|priceItemId|priceitemid|paymentItemId|paymentitemid|bagId|bagid|containerId|containerid|backpackId|backpackid|empty|vial|to|from|transformTo|transformto|decayTo|decayto|rewardId|rewardid|reward)\b\s*=\s*)(\d+)/g,
+                    remap,
+                    collect);
+
+            text = remapLuaPattern(text,
+                    /(\[\s*)(\d+)(\s*\]\s*=)/g,
+                    remap,
+                    collect);
+
+            text = remapLuaPattern(text,
+                    /(\b(?:doCreateItemEx|doCreateItem|getItemInfo|getItemNameById|getItemWeightById|getItemDescriptionsById)\s*\(\s*)(\d+)/g,
+                    remap,
+                    collect);
+
+            text = remapLuaPattern(text,
+                    /(\b(?:doPlayerAddItem|doPlayerRemoveItem|getPlayerItemCount|doAddContainerItem|doTransformItem|getTileItemById|getTileItemByType)\s*\([^()\r\n]*?,\s*)(\d+)/g,
+                    remap,
+                    collect);
+
+            text = remapLuaPattern(text,
+                    /(\b[A-Za-z_][A-Za-z0-9_]*\.itemid\s*(?:==|~=)\s*)(\d+)/g,
+                    remap,
+                    collect);
+
+            text = remapLuaPattern(text,
+                    /(\{[^\r\n{}]*\bid\s*=\s*)(\d+)(?=[^\r\n{}]*(?:count|chance|reward|amount|mincount|maxcount|item))/g,
+                    remap,
+                    collect);
+
+            text = remapLuaPattern(text,
+                    /(\b(?:[A-Z0-9_]*ITEM[A-Z0-9_]*|[A-Z0-9_]*COIN[A-Z0-9_]*|TILE_[A-Z0-9_]+)\s*=\s*)(\d+)/g,
+                    remap,
+                    collect);
+
+            return text;
+        }
+
+        private function remapLuaPattern(text:String,
+                pattern:RegExp,
+                remap:Dictionary,
+                collect:Dictionary):String
+        {
+            var result:String = "";
+            var lastIndex:int = 0;
+            var match:Object;
+
+            while ((match = pattern.exec(text)) != null)
+            {
+                result += text.substring(lastIndex, int(match.index));
+                result += String(match[1]) + remapNumericToken(String(match[2]), remap, collect);
+                if (match.length > 3)
+                    result += String(match[3]);
+                lastIndex = pattern.lastIndex;
+            }
+
+            result += text.substr(lastIndex);
+            return result;
+        }
+
+        private function remapNumericToken(value:String, remap:Dictionary, collect:Dictionary):String
+        {
+            if (!isUnsignedInteger(value))
+                return value;
+
+            return remapItemNumber(uint(value), value, remap, collect);
+        }
+
         private function rememberReferenced(id:uint, collect:Dictionary):void
         {
-            if (!collect || id == 0)
+            if (!collect || !isServerItemId(id))
                 return;
             if (collect[id] !== undefined)
                 return;
@@ -238,7 +372,7 @@ package mapused
 
         private function rememberUnresolved(id:uint):void
         {
-            if (id == 0 || m_unresolvedIds[id] !== undefined)
+            if (!isServerItemId(id) || m_unresolvedIds[id] !== undefined)
                 return;
             m_unresolvedIds[id] = true;
             unresolvedItemIdsCount++;
@@ -272,6 +406,13 @@ package mapused
                     name == "consumeitems" || name == "paymentitems" || name == "lootitems";
         }
 
+        private function isListLikeSingleItemAttribute(tag:String, attr:String, value:String):Boolean
+        {
+            if (!(isSingleItemAttribute(attr) || isItemIdAttributeForTag(tag, attr)))
+                return false;
+            return value && /[,;\|\-]/.test(value);
+        }
+
         private function isItemIdAttributeForTag(tag:String, attr:String):Boolean
         {
             if (attr != "id" && attr != "fromid" && attr != "toid")
@@ -282,6 +423,12 @@ package mapused
                 case "item":
                 case "reward":
                 case "loot":
+                case "rune":
+                case "melee":
+                case "distance":
+                case "wand":
+                case "weapon":
+                case "ammo":
                 case "ingredient":
                 case "material":
                 case "cost":
@@ -296,9 +443,33 @@ package mapused
             return false;
         }
 
+        private function isAllowedServerDataFolder(file:File):Boolean
+        {
+            return file && file.isDirectory && SERVER_DATA_FOLDERS[file.name] === true;
+        }
+
+        private function isServerDataRoot(file:File):Boolean
+        {
+            if (!file || !file.isDirectory)
+                return false;
+            return file.resolvePath("items").exists &&
+                    file.resolvePath("world").exists &&
+                    (file.resolvePath("actions").exists || file.resolvePath("XML").exists);
+        }
+
+        private function isRemappableTextFile(file:File):Boolean
+        {
+            return isXmlFile(file) || isLuaFile(file);
+        }
+
         private function isXmlFile(file:File):Boolean
         {
             return file && file.extension && file.extension.toLowerCase() == "xml";
+        }
+
+        private function isLuaFile(file:File):Boolean
+        {
+            return file && file.extension && file.extension.toLowerCase() == "lua";
         }
 
         private function readText(file:File):Object
@@ -311,7 +482,7 @@ package mapused
 
             bytes.position = 0;
             var header:String = bytes.readUTFBytes(Math.min(bytes.length, 256));
-            var encoding:String = detectEncoding(header);
+            var encoding:String = detectEncoding(header, isXmlFile(file));
             bytes.position = 0;
 
             var text:String;
@@ -337,8 +508,11 @@ package mapused
             stream.close();
         }
 
-        private function detectEncoding(header:String):String
+        private function detectEncoding(header:String, xml:Boolean):String
         {
+            if (!xml)
+                return "iso-8859-1";
+
             if (!header)
                 return "utf-8";
 
@@ -364,6 +538,19 @@ package mapused
         private function isUnsignedInteger(value:String):Boolean
         {
             return value && /^\d+$/.test(value);
+        }
+
+        private function isCountSideOfPair(value:String, tokenIndex:int):Boolean
+        {
+            var index:int = tokenIndex - 1;
+            while (index >= 0 && /\s/.test(value.charAt(index)))
+                index--;
+            return index >= 0 && value.charAt(index) == ":";
+        }
+
+        private function isServerItemId(id:uint):Boolean
+        {
+            return id >= MIN_SERVER_ITEM_ID && id <= 0xFFFF;
         }
 
         private function preserveOuterWhitespace(original:String, replacement:String):String

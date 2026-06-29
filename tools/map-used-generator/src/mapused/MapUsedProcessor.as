@@ -153,18 +153,18 @@ package mapused
             var usedIdsFile:File = outputDir.resolvePath(baseName + "_map_used_server_ids.csv");
             var remapCsv:File = outputDir.resolvePath(baseName + "_map_item_remap.csv");
             var extraServerIds:Dictionary = includeXmlDefinitions ? buildXmlDefinedServerIds(serverItems) : null;
-            var extraXmlSource:File = (includeXmlDefinitions || extraXmlDir) ?
+            var extraDataSource:File = (includeXmlDefinitions || extraXmlDir) ?
                     resolveExtraXmlFolder(otbFile, extraXmlDir) : null;
-            var extraXmlScanFiles:uint = 0;
-            var extraXmlReferencedItems:uint = 0;
-            if (extraXmlSource)
+            var extraDataScanFiles:uint = 0;
+            var extraDataReferencedItems:uint = 0;
+            if (extraDataSource)
             {
                 if (progress != null)
-                    progress("Scanning XML extra item IDs");
+                    progress("Scanning server data item IDs");
                 var xmlReferenceScanner:XmlItemReferenceRemapper = new XmlItemReferenceRemapper();
-                extraServerIds = mergeDictionary(extraServerIds, xmlReferenceScanner.collectReferencedItemIds(extraXmlSource));
-                extraXmlScanFiles = xmlReferenceScanner.filesCount;
-                extraXmlReferencedItems = xmlReferenceScanner.referencedItemsCount;
+                extraServerIds = mergeDictionary(extraServerIds, xmlReferenceScanner.collectReferencedItemIds(extraDataSource));
+                extraDataScanFiles = xmlReferenceScanner.filesCount;
+                extraDataReferencedItems = xmlReferenceScanner.referencedItemsCount;
             }
 
             var builder:MapUsedAssetsBuilder = new MapUsedAssetsBuilder(objects, sprites, serverItems);
@@ -196,20 +196,21 @@ package mapused
             var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
             otfi.save(outputDir.resolvePath("Tibia.otfi"));
             var serverItemsDir:File = writeGeneratedServerItemsFolder(outputDir, otbOut, xmlOut);
-            var extraXmlOutDir:File = null;
-            var extraXmlRemappedFiles:uint = 0;
-            var extraXmlRemappedValues:uint = 0;
-            var extraXmlUnresolvedItems:uint = 0;
-            if (extraXmlSource)
+            var extraDataOutDir:File = null;
+            var extraDataRemappedFiles:uint = 0;
+            var extraDataRemappedValues:uint = 0;
+            var extraDataUnresolvedItems:uint = 0;
+            if (extraDataSource)
             {
                 if (progress != null)
-                    progress("Remapeando XML extra");
-                extraXmlOutDir = outputDir.resolvePath("server_xml_use_this");
+                    progress("Remapeando server data");
+                extraDataOutDir = outputDir.resolvePath("server_data_use_this");
                 var xmlRemapper:XmlItemReferenceRemapper = new XmlItemReferenceRemapper();
-                xmlRemapper.copyRemappedFolder(extraXmlSource, extraXmlOutDir, builder.getServerIdRemap());
-                extraXmlRemappedFiles = xmlRemapper.filesCount;
-                extraXmlRemappedValues = xmlRemapper.remappedValuesCount;
-                extraXmlUnresolvedItems = xmlRemapper.unresolvedItemIdsCount;
+                xmlRemapper.copyRemappedFolder(extraDataSource, extraDataOutDir, builder.getServerIdRemap());
+                copyGeneratedItemsIntoDataFolder(extraDataOutDir, otbOut, xmlOut);
+                extraDataRemappedFiles = xmlRemapper.filesCount;
+                extraDataRemappedValues = xmlRemapper.remappedValuesCount;
+                extraDataUnresolvedItems = xmlRemapper.unresolvedItemIdsCount;
             }
 
             var readmeFile:File = writeCompactReadme(outputDir,
@@ -219,8 +220,8 @@ package mapused
                     xmlOut,
                     serverItemsDir,
                     mapOut,
-                    extraXmlSource,
-                    extraXmlOutDir);
+                    extraDataSource,
+                    extraDataOutDir);
 
             return {
                 dat: datOut.nativePath,
@@ -233,13 +234,13 @@ package mapused
                 readme: readmeFile.nativePath,
                 usedCsv: usedIdsFile.nativePath,
                 remapCsv: remapCsv.nativePath,
-                extraXmlSource: extraXmlSource ? extraXmlSource.nativePath : "",
-                extraXmlOut: extraXmlOutDir ? extraXmlOutDir.nativePath : "",
-                extraXmlScanFiles: extraXmlScanFiles,
-                extraXmlReferencedItems: extraXmlReferencedItems,
-                extraXmlRemappedFiles: extraXmlRemappedFiles,
-                extraXmlRemappedValues: extraXmlRemappedValues,
-                extraXmlUnresolvedItems: extraXmlUnresolvedItems,
+                extraXmlSource: extraDataSource ? extraDataSource.nativePath : "",
+                extraXmlOut: extraDataOutDir ? extraDataOutDir.nativePath : "",
+                extraXmlScanFiles: extraDataScanFiles,
+                extraXmlReferencedItems: extraDataReferencedItems,
+                extraXmlRemappedFiles: extraDataRemappedFiles,
+                extraXmlRemappedValues: extraDataRemappedValues,
+                extraXmlUnresolvedItems: extraDataUnresolvedItems,
                 usedServerItemsCount: builder.usedServerItemsCount,
                 mapUsedOnlyServerItemsCount: builder.mapUsedOnlyServerItemsCount,
                 extraDefinitionServerItemsCount: builder.extraDefinitionServerItemsCount,
@@ -250,7 +251,8 @@ package mapused
                 newSpriteCount: builder.newSpriteCount,
                 reusedSpritesCount: builder.reusedSpritesCount,
                 removedSpritesCount: builder.removedSpritesCount,
-                rewrittenMapItemsCount: builder.rewrittenMapItemsCount
+                rewrittenMapItemsCount: builder.rewrittenMapItemsCount,
+                skippedInvalidServerItemsCount: builder.skippedInvalidServerItemsCount
             };
         }
 
@@ -263,6 +265,19 @@ package mapused
             otbOut.copyTo(serverItemsDir.resolvePath("items.otb"), true);
             xmlOut.copyTo(serverItemsDir.resolvePath("items.xml"), true);
             return serverItemsDir;
+        }
+
+        private function copyGeneratedItemsIntoDataFolder(dataOutDir:File, otbOut:File, xmlOut:File):void
+        {
+            if (!dataOutDir || !otbOut || !xmlOut)
+                return;
+
+            var itemsDir:File = dataOutDir.resolvePath("items");
+            if (!itemsDir.exists)
+                itemsDir.createDirectory();
+
+            otbOut.copyTo(itemsDir.resolvePath("items.otb"), true);
+            xmlOut.copyTo(itemsDir.resolvePath("items.xml"), true);
         }
 
         private function writeCompactReadme(outputDir:File,
@@ -295,8 +310,9 @@ package mapused
             stream.writeUTFBytes("  Mapa remapeado: " + mapOut.nativePath + File.lineEnding);
             if (extraXmlSource && extraXmlOutDir)
             {
-                stream.writeUTFBytes("  XML extra original: " + extraXmlSource.nativePath + File.lineEnding);
-                stream.writeUTFBytes("  XML extra remapeado: " + extraXmlOutDir.nativePath + File.lineEnding);
+                stream.writeUTFBytes("  Data/XML extra original: " + extraXmlSource.nativePath + File.lineEnding);
+                stream.writeUTFBytes("  Data/XML extra remapeado: " + extraXmlOutDir.nativePath + File.lineEnding);
+                stream.writeUTFBytes("  Items tambem copiados em: " + extraXmlOutDir.resolvePath("items").nativePath + File.lineEnding);
             }
             stream.close();
             return readme;
@@ -870,13 +886,8 @@ package mapused
                 return null;
 
             var dataDir:File = otbFile.parent.parent;
-            var xmlDir:File = dataDir.resolvePath("XML");
-            if (xmlDir.exists && xmlDir.isDirectory)
-                return xmlDir;
-
-            xmlDir = dataDir.resolvePath("xml");
-            if (xmlDir.exists && xmlDir.isDirectory)
-                return xmlDir;
+            if (dataDir.exists && dataDir.isDirectory)
+                return dataDir;
 
             return null;
         }

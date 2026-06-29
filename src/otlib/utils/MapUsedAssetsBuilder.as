@@ -102,6 +102,7 @@ package otlib.utils
         public var newSpriteCount:uint;
         public var reusedSpritesCount:uint;
         public var removedSpritesCount:uint;
+        public var skippedInvalidServerItemsCount:uint;
         public var outfitsCount:uint;
         public var effectsCount:uint;
         public var missilesCount:uint;
@@ -275,6 +276,7 @@ package otlib.utils
             newSpriteCount = 0;
             reusedSpritesCount = 0;
             removedSpritesCount = 0;
+            skippedInvalidServerItemsCount = 0;
             outfitsCount = 0;
             effectsCount = 0;
             missilesCount = 0;
@@ -546,7 +548,7 @@ package otlib.utils
 
         private function addUsedServerId(serverId:uint):void
         {
-            if (serverId == 0)
+            if (serverId < ThingTypeStorage.MIN_ITEM_ID)
                 return;
             m_usedServerIds[serverId] = true;
         }
@@ -592,12 +594,24 @@ package otlib.utils
 
                 var serverItem:ServerItem = source.getItemById(oldServerId);
                 if (!serverItem)
-                    throw new Error("Map uses server item " + oldServerId + ", but it was not found in loaded items.otb.");
+                {
+                    skippedInvalidServerItemsCount++;
+                    continue;
+                }
 
                 var oldClientId:uint = serverItem.clientId;
+                if (oldClientId < ThingTypeStorage.MIN_ITEM_ID)
+                {
+                    skippedInvalidServerItemsCount++;
+                    continue;
+                }
+
                 var resolved:Object = resolveThingForServerItem(serverItem);
                 if (!resolved || !resolved.thing)
-                    throw new Error("Map uses server item " + oldServerId + " with missing/empty client item " + oldClientId + ".");
+                {
+                    skippedInvalidServerItemsCount++;
+                    continue;
+                }
 
                 var thing:ThingType = resolved.thing as ThingType;
                 oldClientId = uint(resolved.clientId);

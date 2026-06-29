@@ -117,9 +117,9 @@
             private function browseExtraXml():void
             {
                 var dir:File = extraXmlDir || (otbFile && otbFile.parent && otbFile.parent.parent ?
-                        otbFile.parent.parent.resolvePath("XML") : File.documentsDirectory);
+                        otbFile.parent.parent : File.documentsDirectory);
                 dir.addEventListener(Event.SELECT, extraXmlSelected);
-                dir.browseForDirectory("Selecionar pasta XML extra");
+                dir.browseForDirectory("Selecionar pasta data/XML extra");
             }
 
             private function extraXmlSelected(event:Event):void
@@ -136,9 +136,7 @@
                 if (!otbFile || !otbFile.parent || !otbFile.parent.parent)
                     return;
 
-                var inferred:File = otbFile.parent.parent.resolvePath("XML");
-                if (!inferred.exists)
-                    inferred = otbFile.parent.parent.resolvePath("xml");
+                var inferred:File = otbFile.parent.parent;
                 if (inferred.exists && inferred.isDirectory)
                 {
                     extraXmlDir = inferred;
@@ -199,7 +197,7 @@
                     appendLog("DAT: " + (datFile ? datFile.nativePath : ""));
                     appendLog("SPR: " + (sprFile ? sprFile.nativePath : ""));
                     if (extraXmlDir && extraXmlDir.exists)
-                        appendLog("XML extra: " + extraXmlDir.nativePath);
+                        appendLog("Data/XML extra: " + extraXmlDir.nativePath);
                 }
                 appendLog("Saida: " + (outputDir ? outputDir.nativePath : mapFile.parent.resolvePath("map_used_generator").nativePath));
 
@@ -237,19 +235,21 @@
                             appendLog("Itens extras vindos do items.xml: " + result.extraDefinitionServerItemsCount);
                             if (result.extraXmlSource && result.extraXmlSource.length > 0)
                             {
-                                appendLog("XML extra lido: " + result.extraXmlSource);
-                                appendLog("XML extra arquivos: " + result.extraXmlScanFiles);
-                                appendLog("XML extra itens referenciados: " + result.extraXmlReferencedItems);
-                                appendLog("XML extra remapeado: " + result.extraXmlOut);
-                                appendLog("XML extra valores alterados: " + result.extraXmlRemappedValues);
+                                appendLog("Data/XML extra lido: " + result.extraXmlSource);
+                                appendLog("Data/XML extra arquivos: " + result.extraXmlScanFiles);
+                                appendLog("Data/XML extra itens referenciados: " + result.extraXmlReferencedItems);
+                                appendLog("Data/XML extra remapeado: " + result.extraXmlOut);
+                                appendLog("Data/XML extra valores alterados: " + result.extraXmlRemappedValues);
                                 if (result.extraXmlUnresolvedItems > 0)
-                                    appendLog("XML extra IDs sem remap: " + result.extraXmlUnresolvedItems);
+                                    appendLog("Data/XML extra IDs sem remap: " + result.extraXmlUnresolvedItems);
                             }
                             appendLog("Total de server items mantidos: " + result.usedServerItemsCount);
                             appendLog("Client IDs: compactados e remapeados no items.otb.");
                             appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
                             appendLog("Novo max client item ID: " + result.newClientItemsCount);
                             appendLog("Novos server items: " + result.newServerItemsCount);
+                            if (result.skippedInvalidServerItemsCount > 0)
+                                appendLog("Server items invalidos ignorados: " + result.skippedInvalidServerItemsCount);
                             appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
                                     " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
                             appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
@@ -320,6 +320,8 @@
                             appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
                             appendLog("Novo max client item ID: " + result.newClientItemsCount);
                             appendLog("Novos server items: " + result.newServerItemsCount);
+                            if (result.skippedInvalidServerItemsCount > 0)
+                                appendLog("Server items invalidos ignorados: " + result.skippedInvalidServerItemsCount);
                             appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
                                     " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
                             appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
@@ -425,7 +427,7 @@
     </s:VGroup>
 
     <s:VGroup width="100%" gap="6">
-        <s:Label text="Pasta XML extra opcional (shop, tasks, quests etc.)"/>
+        <s:Label text="Pasta data/XML extra opcional (actions, spells, shop, tasks etc.)"/>
         <s:HGroup width="100%" gap="8">
             <s:TextInput id="extraXmlInput" width="100%"/>
             <s:Button label="Procurar" width="110" click="browseExtraXml()"/>
