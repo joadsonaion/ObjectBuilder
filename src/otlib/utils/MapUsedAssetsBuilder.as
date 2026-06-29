@@ -175,6 +175,7 @@ package otlib.utils
 
             dispatchProgress(2, 10, "Building fast map item map");
             buildItemMaps();
+            validateCompactItemMaps();
 
             dispatchProgress(3, 10, "Rewriting OTBM map IDs");
             rewriteMapFile(mapInFile, mapOutFile);
@@ -616,7 +617,83 @@ package otlib.utils
 
             oldUsedClientItemsCount = countDictionary(usedClientIds);
             newServerItemsCount = m_newServerItems.count;
+            remapXmlServerIdReferences();
             dispatchProgress(2, 10, "Mapped " + newServerItemsCount + " server items");
+        }
+
+        private function validateCompactItemMaps():void
+        {
+            if (!m_preserveClientItemIds)
+            {
+                for (var clientId:uint = ThingTypeStorage.MIN_ITEM_ID;
+                        clientId <= newClientItemsCount;
+                        clientId++)
+                {
+                    if (!m_newItems[clientId])
+                        throw new Error("Compact DAT validation failed: missing client ID " + clientId + ".");
+                }
+            }
+
+            for (var key:* in m_newServerToClient)
+            {
+                var serverId:uint = uint(key);
+                var mappedClientId:uint = uint(m_newServerToClient[key]);
+                if (!m_newItems[mappedClientId])
+                    throw new Error("Compact mapping validation failed: server ID " + serverId +
+                            " points to missing client ID " + mappedClientId + ".");
+            }
+        }
+
+        private function remapXmlServerIdReferences():void
+        {
+            for each (var item:ServerItem in m_newServerItems.toArray())
+            {
+                if (!item)
+                    continue;
+                remapXmlDictionary(item.getXmlAttributes());
+            }
+        }
+
+        private function remapXmlDictionary(attributes:Dictionary):void
+        {
+            if (!attributes)
+                return;
+
+            for (var key:* in attributes)
+            {
+                var value:Object = attributes[key];
+                if (value is Dictionary)
+                {
+                    remapXmlDictionary(value as Dictionary);
+                    continue;
+                }
+
+                if (!isServerItemReferenceKey(String(key)))
+                    continue;
+
+                var oldId:uint = uint(String(value));
+                if (oldId > 0 && m_oldServerToNewServer[oldId] !== undefined)
+                    attributes[key] = String(uint(m_oldServerToNewServer[oldId]));
+            }
+        }
+
+        private function isServerItemReferenceKey(key:String):Boolean
+        {
+            switch (key.toLowerCase())
+            {
+                case "writeonceitemid":
+                case "decayto":
+                case "destroyto":
+                case "transformequipto":
+                case "transformdeequipto":
+                case "maletransformto":
+                case "femaletransformto":
+                case "transformto":
+                case "malesleeper":
+                case "femalesleeper":
+                    return true;
+            }
+            return false;
         }
 
         private function validateWrittenOtb(file:File):void

@@ -170,8 +170,8 @@ package mapused
                     version,
                     features,
                     extraServerIds,
-                    !includeXmlDefinitions,
-                    includeXmlDefinitions))
+                    true,
+                    false))
             {
                 throw new Error("Falha ao gerar cliente compacto.");
             }
@@ -632,15 +632,77 @@ package mapused
             if (!serverItems || !serverItems.loaded || !serverItems.items)
                 return result;
 
+            var pending:Array = [];
             for each (var item:ServerItem in serverItems.items.toArray())
             {
                 if (!item || item.id == 0)
                     continue;
                 if (hasXmlDefinition(item))
+                {
                     result[item.id] = true;
+                    pending.push(item);
+                }
+            }
+
+            while (pending.length > 0)
+            {
+                item = pending.shift() as ServerItem;
+                collectReferencedServerIds(item.getXmlAttributes(), serverItems, result, pending);
             }
 
             return result;
+        }
+
+        private function collectReferencedServerIds(attributes:Dictionary,
+                serverItems:ServerItemStorage,
+                result:Dictionary,
+                pending:Array):void
+        {
+            if (!attributes)
+                return;
+
+            for (var key:* in attributes)
+            {
+                var value:Object = attributes[key];
+                if (value is Dictionary)
+                {
+                    collectReferencedServerIds(value as Dictionary, serverItems, result, pending);
+                    continue;
+                }
+
+                if (!isServerItemReferenceKey(String(key)))
+                    continue;
+
+                var referencedId:uint = uint(String(value));
+                if (referencedId == 0 || result[referencedId] !== undefined)
+                    continue;
+
+                var referencedItem:ServerItem = serverItems.items.getItemById(referencedId);
+                if (!referencedItem)
+                    continue;
+
+                result[referencedId] = true;
+                pending.push(referencedItem);
+            }
+        }
+
+        private function isServerItemReferenceKey(key:String):Boolean
+        {
+            switch (key.toLowerCase())
+            {
+                case "writeonceitemid":
+                case "decayto":
+                case "destroyto":
+                case "transformequipto":
+                case "transformdeequipto":
+                case "maletransformto":
+                case "femaletransformto":
+                case "transformto":
+                case "malesleeper":
+                case "femalesleeper":
+                    return true;
+            }
+            return false;
         }
 
         private function hasXmlDefinition(item:ServerItem):Boolean

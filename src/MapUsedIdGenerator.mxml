@@ -197,7 +197,7 @@
                             appendLog("Itens do mapa: " + result.mapUsedOnlyServerItemsCount);
                             appendLog("Itens extras vindos do items.xml: " + result.extraDefinitionServerItemsCount);
                             appendLog("Total de server items mantidos: " + result.usedServerItemsCount);
-                            appendLog("Client IDs: preservados do DAT original para evitar troca visual de itens.");
+                            appendLog("Client IDs: compactados e remapeados no items.otb.");
                             appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
                             appendLog("Novo max client item ID: " + result.newClientItemsCount);
                             appendLog("Novos server items: " + result.newServerItemsCount);
