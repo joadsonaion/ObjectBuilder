@@ -149,19 +149,19 @@ package otlib.utils
             if (usedServerItemsCount == 0)
                 throw new Error("No items were found in the selected OTBM map.");
 
-            dispatchProgress(2, 10, "Building compact item map");
+            dispatchProgress(2, 10, "Building fast map item map");
             buildItemMaps();
 
             dispatchProgress(3, 10, "Rewriting OTBM map IDs");
             rewriteMapFile(mapInFile, mapOutFile);
 
-            dispatchProgress(4, 10, "Preserving non-item client IDs");
-            var outfitList:Dictionary = clonePreservedCategory(ThingCategory.OUTFIT, m_objects.outfits, m_objects.outfitsCount);
-            outfitsCount = m_objects.outfitsCount;
-            var effectList:Dictionary = clonePreservedCategory(ThingCategory.EFFECT, m_objects.effects, m_objects.effectsCount);
-            effectsCount = m_objects.effectsCount;
-            var missileList:Dictionary = clonePreservedCategory(ThingCategory.MISSILE, m_objects.missiles, m_objects.missilesCount);
-            missilesCount = m_objects.missilesCount;
+            dispatchProgress(4, 10, "Creating minimal non-map categories");
+            var outfitList:Dictionary = new Dictionary();
+            outfitsCount = ThingTypeStorage.MIN_OUTFIT_ID;
+            var effectList:Dictionary = new Dictionary();
+            effectsCount = ThingTypeStorage.MIN_EFFECT_ID;
+            var missileList:Dictionary = new Dictionary();
+            missilesCount = ThingTypeStorage.MIN_MISSILE_ID;
 
             newSpriteCount = m_nextSpriteId > 1 ? m_nextSpriteId - 1 : 1;
             removedSpritesCount = oldSpriteCount > newSpriteCount ? oldSpriteCount - newSpriteCount : 0;
@@ -518,8 +518,14 @@ package otlib.utils
             var source:ServerItemList = m_serverItems.items;
             var usedClientIds:Dictionary = new Dictionary();
 
+            var total:uint = ids.length;
+            var processed:uint = 0;
             for each (var oldServerId:uint in ids)
             {
+                processed++;
+                if (processed == 1 || processed % 2000 == 0)
+                    dispatchProgress(2, 10, "Mapping map item IDs " + processed + "/" + total);
+
                 var serverItem:ServerItem = source.getItemById(oldServerId);
                 if (!serverItem)
                     throw new Error("Map uses server item " + oldServerId + ", but it was not found in loaded items.otb.");
@@ -554,6 +560,7 @@ package otlib.utils
 
             oldUsedClientItemsCount = countDictionary(usedClientIds);
             newServerItemsCount = m_newServerItems.count;
+            dispatchProgress(2, 10, "Mapped " + newServerItemsCount + " server items");
         }
 
         private function getOrCreateClientItem(thing:ThingType, oldClientId:uint):uint
@@ -562,14 +569,6 @@ package otlib.utils
                 return uint(m_oldClientToNewClient[oldClientId]);
 
             thing.category = ThingCategory.ITEM;
-            var key:String = getThingKey(thing);
-            if (m_thingKeyToNewClient[key] !== undefined)
-            {
-                var duplicateClientId:uint = uint(m_thingKeyToNewClient[key]);
-                m_oldClientToNewClient[oldClientId] = duplicateClientId;
-                return duplicateClientId;
-            }
-
             var newClientId:uint = m_nextClientItemId++;
             if (newClientId > 0xFFFF)
                 throw new Error("The map needs more than 65436 client items. Tibia 8.60 DAT item IDs cannot exceed 65535.");
@@ -578,7 +577,6 @@ package otlib.utils
             clone.category = ThingCategory.ITEM;
             m_newItems[newClientId] = clone;
 
-            m_thingKeyToNewClient[key] = newClientId;
             m_oldClientToNewClient[oldClientId] = newClientId;
             newClientItemsCount = newClientId;
             return newClientId;
@@ -621,7 +619,10 @@ package otlib.utils
             if (oldId == 0 || oldId == uint.MAX_VALUE)
                 return 0;
             if (m_oldToNewSpriteId[oldId] !== undefined)
+            {
+                reusedSpritesCount++;
                 return uint(m_oldToNewSpriteId[oldId]);
+            }
 
             var sprite:Sprite = m_sprites.getSprite(oldId);
             if (!sprite || sprite.isEmpty)
@@ -630,26 +631,10 @@ package otlib.utils
                 return 0;
             }
 
-            var hash:String = getSpriteHash(oldId);
-            if (!hash || hash.indexOf("missing:") == 0)
-            {
-                m_oldToNewSpriteId[oldId] = 0;
-                return 0;
-            }
-
-            if (m_hashToNewSpriteId[hash] !== undefined)
-            {
-                var existingId:uint = uint(m_hashToNewSpriteId[hash]);
-                m_oldToNewSpriteId[oldId] = existingId;
-                reusedSpritesCount++;
-                return existingId;
-            }
-
             var newId:uint = m_nextSpriteId++;
             var clonedSprite:Sprite = sprite.clone();
             clonedSprite.id = newId;
             m_newSprites[newId] = clonedSprite;
-            m_hashToNewSpriteId[hash] = newId;
             m_oldToNewSpriteId[oldId] = newId;
             return newId;
         }

@@ -1023,8 +1023,8 @@ package
                     ", client items " + builder.oldUsedClientItemsCount + " -> " + builder.newClientItemsCount +
                     ", server items -> " + builder.newServerItemsCount +
                     ", sprites " + builder.oldSpriteCount + " -> " + builder.newSpriteCount +
-                    " (" + builder.removedSpritesCount + " removed, " + builder.reusedSpritesCount + " duplicate refs reused). " +
-                    "Outfit/effect/missile IDs were preserved.");
+                    " (" + builder.removedSpritesCount + " removed, " + builder.reusedSpritesCount + " repeated refs reused). " +
+                    "Only map-used items were exported; outfit/effect/missile categories were kept minimal.");
 
             clientCompileComplete();
             sendClientInfo();
