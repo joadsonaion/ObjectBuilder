@@ -81,6 +81,8 @@ package otlib.utils
         private var m_nextSpriteId:uint;
         private var m_nextClientItemId:uint;
         private var m_nextServerItemId:uint;
+        private var m_thingHashToClientId:Dictionary;
+        private var m_thingHashCache:Dictionary;
 
         public var mapItemNodesCount:uint;
         public var mapCompactItemsCount:uint;
@@ -233,6 +235,8 @@ package otlib.utils
             m_oldToNewSpriteId = new Dictionary();
             m_hashToNewSpriteId = new Dictionary();
             m_newSprites = new Dictionary();
+            m_thingHashToClientId = new Dictionary();
+            m_thingHashCache = new Dictionary();
             m_nextSpriteId = 1;
             m_nextClientItemId = ThingTypeStorage.MIN_ITEM_ID;
             m_nextServerItemId = 100;
@@ -537,9 +541,12 @@ package otlib.utils
                     throw new Error("Map uses server item " + oldServerId + ", but it was not found in loaded items.otb.");
 
                 var oldClientId:uint = serverItem.clientId;
-                var thing:ThingType = m_objects.items[oldClientId] as ThingType;
-                if (!ThingUtils.isValid(thing) || ThingUtils.isEmpty(thing))
+                var resolved:Object = resolveThingForServerItem(serverItem);
+                if (!resolved || !resolved.thing)
                     throw new Error("Map uses server item " + oldServerId + " with missing/empty client item " + oldClientId + ".");
+
+                var thing:ThingType = resolved.thing as ThingType;
+                oldClientId = uint(resolved.clientId);
 
                 usedClientIds[oldClientId] = true;
 
@@ -595,6 +602,151 @@ package otlib.utils
             m_oldClientToNewClient[oldClientId] = newClientId;
             newClientItemsCount = newClientId;
             return newClientId;
+        }
+
+        private function resolveThingForServerItem(serverItem:ServerItem):Object
+        {
+            var thing:ThingType = getUsableItemThing(serverItem.clientId);
+            if (thing)
+                return {thing: thing, clientId: serverItem.clientId};
+
+            if (serverItem.previousClientId > 0)
+            {
+                thing = getUsableItemThing(serverItem.previousClientId);
+                if (thing)
+                    return {thing: thing, clientId: serverItem.previousClientId};
+            }
+
+            var hashKey:String = getServerItemSpriteHashKey(serverItem);
+            if (hashKey && hashKey.length > 0)
+            {
+                var nearbyId:uint = findClientItemByHashNear(serverItem.clientId, hashKey, 96);
+                if (nearbyId > 0)
+                    return {thing: m_objects.items[nearbyId] as ThingType, clientId: nearbyId};
+
+                var globalId:uint = findClientItemByHashGlobal(hashKey);
+                if (globalId > 0)
+                    return {thing: m_objects.items[globalId] as ThingType, clientId: globalId};
+            }
+
+            return null;
+        }
+
+        private function getUsableItemThing(clientId:uint):ThingType
+        {
+            if (clientId < ThingTypeStorage.MIN_ITEM_ID || clientId > m_objects.itemsCount)
+                return null;
+
+            var thing:ThingType = m_objects.items[clientId] as ThingType;
+            if (!ThingUtils.isValid(thing) || ThingUtils.isEmpty(thing))
+                return null;
+
+            return thing;
+        }
+
+        private function getServerItemSpriteHashKey(serverItem:ServerItem):String
+        {
+            if (!serverItem || !serverItem.spriteHash || serverItem.spriteHash.length == 0)
+                return null;
+
+            var previous:uint = serverItem.spriteHash.position;
+            serverItem.spriteHash.position = 0;
+            var parts:Array = [];
+            while (serverItem.spriteHash.bytesAvailable > 0)
+            {
+                var value:uint = serverItem.spriteHash.readUnsignedByte();
+                var hex:String = value.toString(16).toUpperCase();
+                if (hex.length < 2)
+                    hex = "0" + hex;
+                parts.push(hex);
+            }
+            serverItem.spriteHash.position = previous;
+            return parts.join("");
+        }
+
+        private function getThingHashKey(clientId:uint):String
+        {
+            if (m_thingHashCache[clientId] !== undefined)
+                return String(m_thingHashCache[clientId]);
+
+            var thing:ThingType = getUsableItemThing(clientId);
+            if (!thing)
+            {
+                m_thingHashCache[clientId] = "";
+                return "";
+            }
+
+            var bytes:ByteArray = m_sprites.getSpriteHash(thing);
+            if (!bytes || bytes.length == 0)
+            {
+                m_thingHashCache[clientId] = "";
+                return "";
+            }
+
+            var previous:uint = bytes.position;
+            bytes.position = 0;
+            var parts:Array = [];
+            while (bytes.bytesAvailable > 0)
+            {
+                var value:uint = bytes.readUnsignedByte();
+                var hex:String = value.toString(16).toUpperCase();
+                if (hex.length < 2)
+                    hex = "0" + hex;
+                parts.push(hex);
+            }
+            bytes.position = previous;
+
+            var key:String = parts.join("");
+            m_thingHashCache[clientId] = key;
+            return key;
+        }
+
+        private function findClientItemByHashNear(centerId:uint, hashKey:String, radius:uint):uint
+        {
+            if (!hashKey || hashKey.length == 0)
+                return 0;
+
+            for (var delta:uint = 0; delta <= radius; delta++)
+            {
+                var low:int = int(centerId) - int(delta);
+                var high:uint = centerId + delta;
+
+                if (low >= ThingTypeStorage.MIN_ITEM_ID)
+                {
+                    var lowId:uint = uint(low);
+                    if (getThingHashKey(lowId) == hashKey)
+                        return lowId;
+                }
+
+                if (delta == 0)
+                    continue;
+
+                if (high <= m_objects.itemsCount && getThingHashKey(high) == hashKey)
+                    return high;
+            }
+
+            return 0;
+        }
+
+        private function findClientItemByHashGlobal(hashKey:String):uint
+        {
+            if (!hashKey || hashKey.length == 0)
+                return 0;
+
+            if (m_thingHashToClientId[hashKey] !== undefined)
+                return uint(m_thingHashToClientId[hashKey]);
+
+            for (var clientId:uint = ThingTypeStorage.MIN_ITEM_ID; clientId <= m_objects.itemsCount; clientId++)
+            {
+                if (getThingHashKey(clientId) == hashKey)
+                {
+                    m_thingHashToClientId[hashKey] = clientId;
+                    return clientId;
+                }
+            }
+
+            m_thingHashToClientId[hashKey] = 0;
+            return 0;
         }
 
         private function clonePreservedCategory(category:String, list:Dictionary, maxId:uint):Dictionary
