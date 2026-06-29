@@ -84,6 +84,7 @@ package otlib.utils
         private var m_nextSpriteId:uint;
         private var m_nextClientItemId:uint;
         private var m_nextServerItemId:uint;
+        private var m_dedupeClientItems:Boolean;
         private var m_thingHashToClientId:Dictionary;
         private var m_thingHashCache:Dictionary;
 
@@ -129,7 +130,8 @@ package otlib.utils
                 csvFile:File,
                 version:Version,
                 features:ClientFeatures,
-                extraServerIds:Dictionary = null):Boolean
+                extraServerIds:Dictionary = null,
+                dedupeClientItems:Boolean = true):Boolean
         {
             if (!mapInFile)
                 throw new NullArgumentError("mapInFile");
@@ -153,6 +155,7 @@ package otlib.utils
                 throw new Error("Load items.otb before building map-used assets.");
 
             initialize();
+            m_dedupeClientItems = dedupeClientItems;
 
             dispatchProgress(0, 10, "Scanning OTBM item IDs");
             scanMapUsedItemIds(mapInFile);
@@ -252,6 +255,7 @@ package otlib.utils
             m_nextSpriteId = 1;
             m_nextClientItemId = ThingTypeStorage.MIN_ITEM_ID;
             m_nextServerItemId = 100;
+            m_dedupeClientItems = true;
 
             mapItemNodesCount = 0;
             mapCompactItemsCount = 0;
@@ -632,12 +636,12 @@ package otlib.utils
 
         private function getOrCreateClientItem(thing:ThingType, oldClientId:uint):uint
         {
-            if (m_oldClientToNewClient[oldClientId] !== undefined)
+            if (m_dedupeClientItems && m_oldClientToNewClient[oldClientId] !== undefined)
                 return uint(m_oldClientToNewClient[oldClientId]);
 
             thing.category = ThingCategory.ITEM;
-            var key:String = getThingKey(thing);
-            if (m_thingKeyToNewClient[key] !== undefined)
+            var key:String = m_dedupeClientItems ? getThingKey(thing) : null;
+            if (m_dedupeClientItems && m_thingKeyToNewClient[key] !== undefined)
             {
                 var duplicateClientId:uint = uint(m_thingKeyToNewClient[key]);
                 m_oldClientToNewClient[oldClientId] = duplicateClientId;
@@ -652,7 +656,8 @@ package otlib.utils
             clone.category = ThingCategory.ITEM;
             m_newItems[newClientId] = clone;
 
-            m_thingKeyToNewClient[key] = newClientId;
+            if (m_dedupeClientItems)
+                m_thingKeyToNewClient[key] = newClientId;
             m_oldClientToNewClient[oldClientId] = newClientId;
             newClientItemsCount = newClientId;
             return newClientId;

@@ -197,6 +197,7 @@
                             appendLog("Itens do mapa: " + result.mapUsedOnlyServerItemsCount);
                             appendLog("Itens extras vindos do items.xml: " + result.extraDefinitionServerItemsCount);
                             appendLog("Total de server items mantidos: " + result.usedServerItemsCount);
+                            appendLog("Client IDs: um novo client item por server ID mantido para aparecer corretamente no RME.");
                             appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
                             appendLog("Novo max client item ID: " + result.newClientItemsCount);
                             appendLog("Novos server items: " + result.newServerItemsCount);

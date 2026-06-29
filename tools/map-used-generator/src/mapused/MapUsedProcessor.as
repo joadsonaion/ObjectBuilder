@@ -169,7 +169,8 @@ package mapused
                     remapCsv,
                     version,
                     features,
-                    extraServerIds))
+                    extraServerIds,
+                    !includeXmlDefinitions))
             {
                 throw new Error("Falha ao gerar cliente compacto.");
             }
