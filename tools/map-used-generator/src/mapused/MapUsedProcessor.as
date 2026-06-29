@@ -17,6 +17,7 @@ package mapused
     import otlib.sprites.SpriteStorage;
     import otlib.things.ThingTypeStorage;
     import otlib.utils.MapUsedAssetsBuilder;
+    import otlib.utils.MergedClientCleaner;
     import otlib.utils.OTFI;
     import otlib.utils.SpriteExtent;
 
@@ -189,6 +190,121 @@ package mapused
                 reusedSpritesCount: builder.reusedSpritesCount,
                 removedSpritesCount: builder.removedSpritesCount,
                 rewrittenMapItemsCount: builder.rewrittenMapItemsCount
+            };
+        }
+
+        public function runMergedCleanupCompact(mapFile:File,
+                datFile:File,
+                sprFile:File,
+                otbFile:File,
+                outputDir:File,
+                versionValue:uint,
+                features:ClientFeatures,
+                removalCutoff:uint,
+                progress:Function = null):Object
+        {
+            if (!mapFile || !mapFile.exists)
+                throw new Error("Selecione um mapa .otbm valido.");
+            if (!datFile || !datFile.exists)
+                throw new Error("Selecione Tibia.dat valido.");
+            if (!sprFile || !sprFile.exists)
+                throw new Error("Selecione Tibia.spr valido.");
+            if (!otbFile || !otbFile.exists)
+                throw new Error("Selecione items.otb valido.");
+
+            if (!outputDir)
+                outputDir = mapFile.parent.resolvePath("merged_cleanup_client");
+            if (!outputDir.exists)
+                outputDir.createDirectory();
+
+            if (!features)
+                features = new ClientFeatures(true, true, true, true, "default", "tfs0.5");
+
+            var version:Version = new Version();
+            version.value = versionValue > 0 ? versionValue : 860;
+            version.valueStr = String(version.value);
+
+            if (progress != null)
+                progress("Carregando DAT...");
+            var objects:ThingTypeStorage = new ThingTypeStorage();
+            objects.load(datFile, version, features);
+
+            if (progress != null)
+                progress("Carregando SPR...");
+            var sprites:SpriteStorage = new SpriteStorage();
+            sprites.load(sprFile, version, features);
+
+            version.datSignature = objects.signature;
+            version.sprSignature = sprites.signature;
+
+            if (progress != null)
+                progress("Carregando items.otb...");
+            var serverItems:ServerItemStorage = new ServerItemStorage();
+            if (!serverItems.load(otbFile))
+                throw new Error("Nao foi possivel carregar items.otb.");
+
+            var mapBaseName:String = fileBaseName(mapFile);
+            var datOut:File = outputDir.resolvePath("Tibia.dat");
+            var sprOut:File = outputDir.resolvePath("Tibia.spr");
+            var otbOut:File = outputDir.resolvePath("items.otb");
+            var csvOut:File = outputDir.resolvePath(mapBaseName + "_cleanup_id_map.csv");
+            var copiedMap:File = outputDir.resolvePath(mapFile.name);
+            if (copiedMap.nativePath == mapFile.nativePath)
+                copiedMap = outputDir.resolvePath(mapBaseName + "_compatible.otbm");
+
+            var cleaner:MergedClientCleaner = new MergedClientCleaner(objects, sprites, serverItems);
+            if (progress != null)
+                cleaner.addEventListener(ProgressEvent.PROGRESS, function(event:ProgressEvent):void
+                {
+                    progress(event.label);
+                });
+
+            if (!cleaner.export(datOut,
+                    sprOut,
+                    csvOut,
+                    otbOut,
+                    version,
+                    features,
+                    removalCutoff,
+                    true))
+            {
+                throw new Error("Falha ao gerar cleanup compacto.");
+            }
+
+            if (progress != null)
+                progress("Copiando mapa compativel");
+            if (copiedMap.exists)
+                copiedMap.deleteFile();
+            mapFile.copyTo(copiedMap, true);
+
+            var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
+            otfi.save(outputDir.resolvePath("Tibia.otfi"));
+
+            return {
+                dat: datOut.nativePath,
+                spr: sprOut.nativePath,
+                otb: otbOut.nativePath,
+                otfi: outputDir.resolvePath("Tibia.otfi").nativePath,
+                map: copiedMap.nativePath,
+                csv: csvOut.nativePath,
+                oldItemsCount: cleaner.oldItemsCount,
+                itemsCount: cleaner.itemsCount,
+                oldOutfitsCount: cleaner.oldOutfitsCount,
+                outfitsCount: cleaner.outfitsCount,
+                oldEffectsCount: cleaner.oldEffectsCount,
+                effectsCount: cleaner.effectsCount,
+                oldMissilesCount: cleaner.oldMissilesCount,
+                missilesCount: cleaner.missilesCount,
+                oldSpriteCount: cleaner.oldSpriteCount,
+                newSpriteCount: cleaner.newSpriteCount,
+                removedItems: cleaner.removedItems,
+                removedOutfits: cleaner.removedOutfits,
+                removedEffects: cleaner.removedEffects,
+                removedMissiles: cleaner.removedMissiles,
+                reusedSpritesCount: cleaner.reusedSpritesCount,
+                removedSpritesCount: cleaner.removedSpritesCount,
+                remappedServerItems: cleaner.remappedServerItems,
+                unresolvedServerItems: cleaner.unresolvedServerItems
             };
         }
 

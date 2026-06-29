@@ -106,7 +106,8 @@ package otlib.utils
                 otbFile:File,
                 version:Version,
                 features:ClientFeatures,
-                removalCutoff:uint):Boolean
+                removalCutoff:uint,
+                reindexKeptIds:Boolean = false):Boolean
         {
             if (!datFile)
                 throw new NullArgumentError("datFile");
@@ -128,7 +129,8 @@ package otlib.utils
                     ThingCategory.ITEM,
                     ThingTypeStorage.MIN_ITEM_ID,
                     m_objects.itemsCount,
-                    removalCutoff);
+                    removalCutoff,
+                    reindexKeptIds);
             itemsCount = itemResult.count;
             removedItems = itemResult.removed;
 
@@ -137,7 +139,8 @@ package otlib.utils
                     ThingCategory.OUTFIT,
                     1,
                     m_objects.outfitsCount,
-                    removalCutoff);
+                    removalCutoff,
+                    reindexKeptIds);
             outfitsCount = outfitResult.count;
             removedOutfits = outfitResult.removed;
 
@@ -146,7 +149,8 @@ package otlib.utils
                     ThingCategory.EFFECT,
                     1,
                     m_objects.effectsCount,
-                    removalCutoff);
+                    removalCutoff,
+                    reindexKeptIds);
             effectsCount = effectResult.count;
             removedEffects = effectResult.removed;
 
@@ -155,7 +159,8 @@ package otlib.utils
                     ThingCategory.MISSILE,
                     1,
                     m_objects.missilesCount,
-                    removalCutoff);
+                    removalCutoff,
+                    reindexKeptIds);
             missilesCount = missileResult.count;
             removedMissiles = missileResult.removed;
 
@@ -239,7 +244,8 @@ package otlib.utils
                 category:String,
                 minId:uint,
                 maxId:uint,
-                removalCutoff:uint):Object
+                removalCutoff:uint,
+                reindexKeptIds:Boolean):Object
         {
             var output:Dictionary = new Dictionary();
             var oldToNew:Dictionary = new Dictionary();
@@ -306,17 +312,19 @@ package otlib.utils
                 }
             }
 
+            var nextId:uint = minId;
             for each (entry in entries)
             {
                 if (entry.removed)
                     continue;
 
                 var clone:ThingType = cloneThingWithRemappedSprites(entry.thing as ThingType);
-                clone.id = entry.oldId;
+                var targetId:uint = reindexKeptIds ? nextId++ : entry.oldId;
+                clone.id = targetId;
                 clone.category = category;
-                output[entry.oldId] = clone;
-                entry.newId = entry.oldId;
-                oldToNew[entry.oldId] = entry.oldId;
+                output[targetId] = clone;
+                entry.newId = targetId;
+                oldToNew[entry.oldId] = targetId;
             }
 
             for each (entry in entries)
@@ -359,9 +367,17 @@ package otlib.utils
             }
 
             m_categoryMaps[category] = oldToNew;
-            var count:uint = maxId;
-            while (count > minId && output[count] === undefined)
-                count--;
+            var count:uint;
+            if (reindexKeptIds)
+            {
+                count = nextId > minId ? nextId - 1 : minId;
+            }
+            else
+            {
+                count = maxId;
+                while (count > minId && output[count] === undefined)
+                    count--;
+            }
 
             return {
                 list: output,

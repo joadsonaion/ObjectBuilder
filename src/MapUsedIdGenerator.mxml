@@ -38,6 +38,8 @@
                 improvedAnimationsCheck.selected = true;
                 frameGroupsCheck.selected = true;
                 compactClientCheck.selected = true;
+                cleanupModeCheck.selected = true;
+                cleanupCutoffInput.text = "24202";
                 appendLog("Pronto. Selecione mapa, items.otb, Tibia.dat e Tibia.spr para gerar cliente compacto.");
             }
 
@@ -144,7 +146,10 @@
 
                 runButton.enabled = false;
                 appendLog("");
-                appendLog(compactClientCheck.selected ? "Iniciando compactacao completa..." : "Iniciando leitura direta do mapa...");
+                if (compactClientCheck.selected && cleanupModeCheck.selected)
+                    appendLog("Iniciando cleanup merge completo...");
+                else
+                    appendLog(compactClientCheck.selected ? "Iniciando compactacao completa por itens do mapa..." : "Iniciando leitura direta do mapa...");
                 appendLog("Mapa: " + mapFile.nativePath);
                 if (otbFile && otbFile.exists)
                     appendLog("OTB: " + otbFile.nativePath);
@@ -168,35 +173,71 @@
                     var result:Object;
                     if (compactClientCheck.selected)
                     {
-                        result = processor.runCompact(mapFile,
-                                datFile,
-                                sprFile,
-                                otbFile,
-                                outputDir,
-                                uint(parseInt(versionInput.text, 10)),
-                                new ClientFeatures(extendedCheck.selected,
-                                        transparencyCheck.selected,
-                                        improvedAnimationsCheck.selected,
-                                        frameGroupsCheck.selected,
-                                        "default",
-                                        attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
-                                appendLog);
+                        if (cleanupModeCheck.selected)
+                        {
+                            result = processor.runMergedCleanupCompact(mapFile,
+                                    datFile,
+                                    sprFile,
+                                    otbFile,
+                                    outputDir,
+                                    uint(parseInt(versionInput.text, 10)),
+                                    new ClientFeatures(extendedCheck.selected,
+                                            transparencyCheck.selected,
+                                            improvedAnimationsCheck.selected,
+                                            frameGroupsCheck.selected,
+                                            "default",
+                                            attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
+                                    uint(parseInt(cleanupCutoffInput.text, 10)),
+                                    appendLog);
 
-                        appendLog("Concluido.");
-                        appendLog("Itens de mapa usados: " + result.usedServerItemsCount);
-                        appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
-                        appendLog("Novo max client item ID: " + result.newClientItemsCount);
-                        appendLog("Novos server items: " + result.newServerItemsCount);
-                        appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
-                                " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
-                        appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
-                        appendLog("DAT: " + result.dat);
-                        appendLog("SPR: " + result.spr);
-                        appendLog("OTB: " + result.otb);
-                        appendLog("OTFI: " + result.otfi);
-                        appendLog("Mapa remapeado: " + result.map);
-                        appendLog("CSV IDs: " + result.usedCsv);
-                        appendLog("CSV remap: " + result.remapCsv);
+                            appendLog("Concluido.");
+                            appendLog("Itens: " + result.oldItemsCount + " -> " + result.itemsCount + " (" + result.removedItems + " duplicados removidos)");
+                            appendLog("Outfits: " + result.oldOutfitsCount + " -> " + result.outfitsCount + " (" + result.removedOutfits + " duplicados removidos)");
+                            appendLog("Effects: " + result.oldEffectsCount + " -> " + result.effectsCount + " (" + result.removedEffects + " duplicados removidos)");
+                            appendLog("Missiles: " + result.oldMissilesCount + " -> " + result.missilesCount + " (" + result.removedMissiles + " duplicados removidos)");
+                            appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
+                                    " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
+                            appendLog("Server items remapeados: " + result.remappedServerItems);
+                            appendLog("Server items sem destino: " + result.unresolvedServerItems);
+                            appendLog("DAT: " + result.dat);
+                            appendLog("SPR: " + result.spr);
+                            appendLog("OTB: " + result.otb);
+                            appendLog("OTFI: " + result.otfi);
+                            appendLog("Mapa compativel: " + result.map);
+                            appendLog("CSV cleanup: " + result.csv);
+                        }
+                        else
+                        {
+                            result = processor.runCompact(mapFile,
+                                    datFile,
+                                    sprFile,
+                                    otbFile,
+                                    outputDir,
+                                    uint(parseInt(versionInput.text, 10)),
+                                    new ClientFeatures(extendedCheck.selected,
+                                            transparencyCheck.selected,
+                                            improvedAnimationsCheck.selected,
+                                            frameGroupsCheck.selected,
+                                            "default",
+                                            attributeServerInput.text && attributeServerInput.text.length > 0 ? attributeServerInput.text : "tfs0.5"),
+                                    appendLog);
+
+                            appendLog("Concluido.");
+                            appendLog("Itens de mapa usados: " + result.usedServerItemsCount);
+                            appendLog("Client items usados antigos: " + result.oldUsedClientItemsCount);
+                            appendLog("Novo max client item ID: " + result.newClientItemsCount);
+                            appendLog("Novos server items: " + result.newServerItemsCount);
+                            appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
+                                    " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
+                            appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);
+                            appendLog("DAT: " + result.dat);
+                            appendLog("SPR: " + result.spr);
+                            appendLog("OTB: " + result.otb);
+                            appendLog("OTFI: " + result.otfi);
+                            appendLog("Mapa remapeado: " + result.map);
+                            appendLog("CSV IDs: " + result.usedCsv);
+                            appendLog("CSV remap: " + result.remapCsv);
+                        }
                     }
                     else
                     {
@@ -316,6 +357,8 @@
     <s:HGroup width="100%" verticalAlign="middle" gap="16">
         <s:Label text="Novo server ID inicial"/>
         <s:TextInput id="startIdInput" width="90"/>
+        <s:Label text="Cutoff cleanup"/>
+        <s:TextInput id="cleanupCutoffInput" width="90"/>
         <s:Label text="Versao"/>
         <s:TextInput id="versionInput" width="70"/>
         <s:Label text="Attr"/>
@@ -324,6 +367,7 @@
 
     <s:HGroup width="100%" verticalAlign="middle" gap="14">
         <s:CheckBox id="compactClientCheck" label="Gerar cliente compacto DAT/SPR/OTB"/>
+        <s:CheckBox id="cleanupModeCheck" label="Modo cleanup merge (ceea262)"/>
         <s:CheckBox id="rewriteMapCheck" label="Gerar mapa remapeado"/>
         <s:CheckBox id="extendedCheck" label="Extended"/>
         <s:CheckBox id="transparencyCheck" label="Transparency"/>

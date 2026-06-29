@@ -912,7 +912,8 @@ package
                         otbFile,
                         version,
                         features,
-                        removalCutoff);
+                        removalCutoff,
+                        true);
             }
             finally
             {
@@ -939,7 +940,7 @@ package
                     ", sprites " + cleaner.oldSpriteCount + " -> " + cleaner.newSpriteCount + " (" + cleaner.removedSpritesCount + " removed)" +
                     ", remapped server items=" + cleaner.remappedServerItems +
                     ", unresolved server items=" + cleaner.unresolvedServerItems +
-                    ". Kept objects were not reindexed.");
+                    ". Kept objects were reindexed to close duplicate gaps.");
 
             clientCompileComplete();
             sendClientInfo();
