@@ -814,6 +814,185 @@ package otlib.sprites
             return done;
         }
 
+        public function compileRemapped(file:File,
+                version:Version,
+                features:ClientFeatures,
+                oldToNew:Dictionary,
+                spritesCount:uint):Boolean
+        {
+            if (!file)
+            {
+                throw new NullArgumentError("file");
+            }
+
+            if (!version)
+            {
+                throw new NullArgumentError("version");
+            }
+
+            if (!_loaded)
+                return false;
+
+            if (!_file || !_file.exists)
+                throw new Error("Fast SPR remap requires a loaded source SPR file.");
+
+            var compileFeatures:ClientFeatures = features.clone();
+            compileFeatures.applyVersionDefaults(version.value);
+            var extended:Boolean = compileFeatures.extended;
+            var transparency:Boolean = compileFeatures.transparency;
+            if (_currentFeatures && _currentFeatures.transparency != transparency)
+                throw new Error("Fast SPR remap requires output transparency to match the loaded client.");
+
+            var newToOld:Dictionary = new Dictionary();
+            for (var key:* in oldToNew)
+            {
+                var oldId:uint = uint(key);
+                var newId:uint = uint(oldToNew[key]);
+                if (oldId > 0 && newId > 0)
+                    newToOld[newId] = oldId;
+            }
+
+            var source:FileStream;
+            var stream:FileStream;
+            var tmpFile:File = FileUtil.getDirectory(file).resolvePath("tmp_" + file.name);
+            var done:Boolean;
+            var headSize:uint;
+            var count:uint;
+
+            try
+            {
+                source = new FileStream();
+                source.open(_file, FileMode.READ);
+                source.endian = Endian.LITTLE_ENDIAN;
+
+                stream = new FileStream();
+                stream.open(tmpFile, FileMode.WRITE);
+                stream.endian = Endian.LITTLE_ENDIAN;
+                stream.writeUnsignedInt(version.sprSignature);
+
+                if (extended || version.value >= 960)
+                {
+                    count = spritesCount;
+                    headSize = SpriteFileSize.HEADER_U32;
+                    stream.writeUnsignedInt(count);
+                }
+                else
+                {
+                    count = spritesCount >= 0xFFFF ? 0xFFFE : spritesCount;
+                    headSize = SpriteFileSize.HEADER_U16;
+                    stream.writeShort(count);
+                }
+
+                var addressPosition:uint = stream.position;
+                var offset:uint = (count * SpriteFileSize.ADDRESS) + headSize;
+                var buffer:ByteArray = new ByteArray();
+                buffer.endian = Endian.LITTLE_ENDIAN;
+
+                for (var i:uint = 1; i <= count; i++)
+                {
+                    stream.position = addressPosition;
+                    oldId = uint(newToOld[i]);
+
+                    if (oldId == 0 || oldId > _spritesCount)
+                    {
+                        stream.writeUnsignedInt(0);
+                    }
+                    else if (_sprites && _sprites[oldId] !== undefined)
+                    {
+                        var sprite:Sprite = _sprites[oldId] as Sprite;
+                        if (!sprite || sprite.isEmpty)
+                        {
+                            stream.writeUnsignedInt(0);
+                        }
+                        else
+                        {
+                            sprite.transparent = transparency;
+                            sprite.compressedPixels.position = 0;
+
+                            stream.writeUnsignedInt(offset);
+                            stream.position = offset;
+                            stream.writeByte(0xFF);
+                            stream.writeByte(0x00);
+                            stream.writeByte(0xFF);
+                            stream.writeShort(sprite.length);
+                            stream.writeBytes(sprite.compressedPixels, 0, sprite.length);
+                            offset = stream.position;
+                        }
+                    }
+                    else
+                    {
+                        source.position = ((oldId - 1) * SpriteFileSize.ADDRESS) + _headerSize;
+                        var sourceOffset:uint = source.readUnsignedInt();
+                        if (sourceOffset == 0)
+                        {
+                            stream.writeUnsignedInt(0);
+                        }
+                        else
+                        {
+                            source.position = sourceOffset;
+                            var red:uint = source.readUnsignedByte();
+                            var green:uint = source.readUnsignedByte();
+                            var blue:uint = source.readUnsignedByte();
+                            var length:uint = source.readUnsignedShort();
+
+                            if (length == 0)
+                            {
+                                stream.writeUnsignedInt(0);
+                            }
+                            else
+                            {
+                                buffer.clear();
+                                source.readBytes(buffer, 0, length);
+                                buffer.position = 0;
+
+                                stream.writeUnsignedInt(offset);
+                                stream.position = offset;
+                                stream.writeByte(red);
+                                stream.writeByte(green);
+                                stream.writeByte(blue);
+                                stream.writeShort(length);
+                                stream.writeBytes(buffer, 0, length);
+                                offset = stream.position;
+                            }
+                        }
+                    }
+
+                    addressPosition += SpriteFileSize.ADDRESS;
+                }
+
+                if (source)
+                    source.close();
+                if (stream)
+                    stream.close();
+                done = true;
+            }
+            catch (error:Error)
+            {
+                if (source)
+                    source.close();
+                if (stream)
+                    stream.close();
+
+                dispatchEvent(new ErrorEvent(ErrorEvent.ERROR, false, false, error.getStackTrace(), error.errorID));
+                done = false;
+            }
+
+            if (done)
+            {
+                if (file.exists)
+                    file.deleteFile();
+
+                FileUtil.rename(tmpFile, FileUtil.getName(file));
+            }
+            else if (tmpFile.exists)
+            {
+                tmpFile.deleteFile();
+            }
+
+            dispatchEvent(new StorageEvent(StorageEvent.COMPILE));
+            return done;
+        }
+
         public function isEmptySprite(id:uint):Boolean
         {
             if (_loaded && id <= _spritesCount)

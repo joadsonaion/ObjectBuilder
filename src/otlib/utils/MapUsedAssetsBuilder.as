@@ -118,6 +118,7 @@ package otlib.utils
                 datFile:File,
                 sprFile:File,
                 otbFile:File,
+                usedIdsFile:File,
                 csvFile:File,
                 version:Version,
                 features:ClientFeatures):Boolean
@@ -132,6 +133,8 @@ package otlib.utils
                 throw new NullArgumentError("sprFile");
             if (!otbFile)
                 throw new NullArgumentError("otbFile");
+            if (!usedIdsFile)
+                throw new NullArgumentError("usedIdsFile");
             if (!csvFile)
                 throw new NullArgumentError("csvFile");
             if (!version)
@@ -148,6 +151,9 @@ package otlib.utils
             usedServerItemsCount = countDictionary(m_usedServerIds);
             if (usedServerItemsCount == 0)
                 throw new Error("No items were found in the selected OTBM map.");
+
+            dispatchProgress(1, 10, "Writing used server ID list");
+            writeUsedServerIds(usedIdsFile);
 
             dispatchProgress(2, 10, "Building fast map item map");
             buildItemMaps();
@@ -188,7 +194,7 @@ package otlib.utils
             }
 
             dispatchProgress(6, 10, "Writing compact SPR");
-            if (!m_sprites.compileCustom(sprFile, version, features, m_newSprites, newSpriteCount))
+            if (!m_sprites.compileRemapped(sprFile, version, features, m_oldToNewSpriteId, newSpriteCount))
                 return false;
 
             dispatchProgress(7, 10, "Writing compact items.otb");
@@ -618,23 +624,15 @@ package otlib.utils
         {
             if (oldId == 0 || oldId == uint.MAX_VALUE)
                 return 0;
+            if (oldId > oldSpriteCount)
+                return 0;
             if (m_oldToNewSpriteId[oldId] !== undefined)
             {
                 reusedSpritesCount++;
                 return uint(m_oldToNewSpriteId[oldId]);
             }
 
-            var sprite:Sprite = m_sprites.getSprite(oldId);
-            if (!sprite || sprite.isEmpty)
-            {
-                m_oldToNewSpriteId[oldId] = 0;
-                return 0;
-            }
-
             var newId:uint = m_nextSpriteId++;
-            var clonedSprite:Sprite = sprite.clone();
-            clonedSprite.id = newId;
-            m_newSprites[newId] = clonedSprite;
             m_oldToNewSpriteId[oldId] = newId;
             return newId;
         }
@@ -816,6 +814,30 @@ package otlib.utils
                         row.newClientId + "," +
                         csv(row.name) + File.lineEnding);
             }
+            stream.close();
+        }
+
+        private function writeUsedServerIds(file:File):void
+        {
+            var ids:Array = [];
+            for (var key:* in m_usedServerIds)
+                ids.push(uint(key));
+            ids.sort(Array.NUMERIC);
+
+            var stream:FileStream = new FileStream();
+            stream.open(file, FileMode.WRITE);
+            stream.writeUTFBytes("server_id,client_id,name" + File.lineEnding);
+
+            var source:ServerItemList = m_serverItems.items;
+            for each (var serverId:uint in ids)
+            {
+                var item:ServerItem = source.getItemById(serverId);
+                stream.writeUTFBytes(serverId + "," +
+                        (item ? item.clientId : "") + "," +
+                        (item ? csv(getServerItemName(item)) : "") +
+                        File.lineEnding);
+            }
+
             stream.close();
         }
 

@@ -975,6 +975,7 @@ package
             if (mapOut.nativePath == mapIn.nativePath)
                 mapOut = dir.resolvePath(baseName + "_remapped.otbm");
             var otbFile:File = dir.resolvePath(baseName + "_items.otb");
+            var usedIdsFile:File = dir.resolvePath(baseName + "_map_used_server_ids.csv");
             var csvFile:File = dir.resolvePath(baseName + "_map_item_remap.csv");
 
             var builder:MapUsedAssetsBuilder = new MapUsedAssetsBuilder(_things, _sprites, _items);
@@ -993,6 +994,7 @@ package
                         dat,
                         spr,
                         otbFile,
+                        usedIdsFile,
                         csvFile,
                         version,
                         features);
@@ -1015,6 +1017,7 @@ package
                     ", SPR=" + spr.nativePath +
                     ", OTB=" + otbFile.nativePath +
                     ", MAP=" + mapOut.nativePath +
+                    ", used IDs=" + usedIdsFile.nativePath +
                     ", CSV=" + csvFile.nativePath +
                     ". Map used server items=" + builder.usedServerItemsCount +
                     ", map item nodes=" + builder.mapItemNodesCount +
