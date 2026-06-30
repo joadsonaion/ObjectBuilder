@@ -76,6 +76,9 @@ package otlib.utils
         private var m_newItems:Dictionary;
         private var m_newServerItems:ServerItemList;
         private var m_mappingRows:Array;
+        private var m_oldOutfitToNewOutfit:Dictionary;
+        private var m_oldEffectToNewEffect:Dictionary;
+        private var m_oldMissileToNewMissile:Dictionary;
 
         private var m_spriteHashes:Dictionary;
         private var m_oldToNewSpriteId:Dictionary;
@@ -103,9 +106,15 @@ package otlib.utils
         public var reusedSpritesCount:uint;
         public var removedSpritesCount:uint;
         public var skippedInvalidServerItemsCount:uint;
+        public var oldOutfitsCount:uint;
+        public var oldEffectsCount:uint;
+        public var oldMissilesCount:uint;
         public var outfitsCount:uint;
         public var effectsCount:uint;
         public var missilesCount:uint;
+        public var removedOutfits:uint;
+        public var removedEffects:uint;
+        public var removedMissiles:uint;
 
         public function MapUsedAssetsBuilder(objects:ThingTypeStorage,
                 sprites:SpriteStorage,
@@ -181,13 +190,30 @@ package otlib.utils
             dispatchProgress(3, 10, "Rewriting OTBM map IDs");
             rewriteMapFile(mapInFile, mapOutFile);
 
-            dispatchProgress(4, 10, "Preserving outfits, effects and missiles");
-            var outfitList:Dictionary = clonePreservedCategory(ThingCategory.OUTFIT, m_objects.outfits, m_objects.outfitsCount);
-            outfitsCount = m_objects.outfitsCount;
-            var effectList:Dictionary = clonePreservedCategory(ThingCategory.EFFECT, m_objects.effects, m_objects.effectsCount);
-            effectsCount = m_objects.effectsCount;
-            var missileList:Dictionary = clonePreservedCategory(ThingCategory.MISSILE, m_objects.missiles, m_objects.missilesCount);
-            missilesCount = m_objects.missilesCount;
+            dispatchProgress(4, 10, "Compacting duplicate outfits, effects and missiles");
+            var outfitResult:Object = compactDuplicateCategory(ThingCategory.OUTFIT,
+                    m_objects.outfits,
+                    ThingTypeStorage.MIN_OUTFIT_ID,
+                    m_objects.outfitsCount);
+            var outfitList:Dictionary = outfitResult.list;
+            outfitsCount = outfitResult.count;
+            removedOutfits = outfitResult.removed;
+
+            var effectResult:Object = compactDuplicateCategory(ThingCategory.EFFECT,
+                    m_objects.effects,
+                    ThingTypeStorage.MIN_EFFECT_ID,
+                    m_objects.effectsCount);
+            var effectList:Dictionary = effectResult.list;
+            effectsCount = effectResult.count;
+            removedEffects = effectResult.removed;
+
+            var missileResult:Object = compactDuplicateCategory(ThingCategory.MISSILE,
+                    m_objects.missiles,
+                    ThingTypeStorage.MIN_MISSILE_ID,
+                    m_objects.missilesCount);
+            var missileList:Dictionary = missileResult.list;
+            missilesCount = missileResult.count;
+            removedMissiles = missileResult.removed;
 
             newSpriteCount = m_nextSpriteId > 1 ? m_nextSpriteId - 1 : 1;
             removedSpritesCount = oldSpriteCount > newSpriteCount ? oldSpriteCount - newSpriteCount : 0;
@@ -240,6 +266,9 @@ package otlib.utils
             m_oldServerToNewServer = new Dictionary();
             m_newServerToClient = new Dictionary();
             m_oldClientToNewClient = new Dictionary();
+            m_oldOutfitToNewOutfit = new Dictionary();
+            m_oldEffectToNewEffect = new Dictionary();
+            m_oldMissileToNewMissile = new Dictionary();
             m_thingKeyToNewClient = new Dictionary();
             m_newItems = new Dictionary();
             m_newServerItems = new ServerItemList();
@@ -277,9 +306,15 @@ package otlib.utils
             reusedSpritesCount = 0;
             removedSpritesCount = 0;
             skippedInvalidServerItemsCount = 0;
+            oldOutfitsCount = m_objects.outfitsCount;
+            oldEffectsCount = m_objects.effectsCount;
+            oldMissilesCount = m_objects.missilesCount;
             outfitsCount = 0;
             effectsCount = 0;
             missilesCount = 0;
+            removedOutfits = 0;
+            removedEffects = 0;
+            removedMissiles = 0;
         }
 
         public function writeItemsXml(file:File):Boolean
@@ -301,6 +336,32 @@ package otlib.utils
 
             for (var key:* in m_oldServerToNewServer)
                 result[uint(key)] = uint(m_oldServerToNewServer[key]);
+            return result;
+        }
+
+        public function getOutfitIdRemap():Dictionary
+        {
+            return copyRemap(m_oldOutfitToNewOutfit);
+        }
+
+        public function getEffectIdRemap():Dictionary
+        {
+            return copyRemap(m_oldEffectToNewEffect);
+        }
+
+        public function getMissileIdRemap():Dictionary
+        {
+            return copyRemap(m_oldMissileToNewMissile);
+        }
+
+        private function copyRemap(source:Dictionary):Dictionary
+        {
+            var result:Dictionary = new Dictionary();
+            if (!source)
+                return result;
+
+            for (var key:* in source)
+                result[uint(key)] = uint(source[key]);
             return result;
         }
 
@@ -935,21 +996,82 @@ package otlib.utils
             return 0;
         }
 
-        private function clonePreservedCategory(category:String, list:Dictionary, maxId:uint):Dictionary
+        private function compactDuplicateCategory(category:String,
+                list:Dictionary,
+                minId:uint,
+                maxId:uint):Object
         {
-            var result:Dictionary = new Dictionary();
-            for (var id:uint = 1; id <= maxId; id++)
+            var output:Dictionary = new Dictionary();
+            var oldToNew:Dictionary = getCategoryRemap(category);
+            var keyToCanonical:Dictionary = new Dictionary();
+            var kept:Array = [];
+            var duplicates:Array = [];
+
+            for (var id:uint = minId; id <= maxId; id++)
             {
                 var thing:ThingType = list[id] as ThingType;
-                if (!thing)
+                if (!ThingUtils.isValid(thing) || ThingUtils.isEmpty(thing))
                     continue;
 
-                var clone:ThingType = cloneThingWithRemappedSprites(thing);
-                clone.id = id;
-                clone.category = category;
-                result[id] = clone;
+                thing.category = category;
+                var key:String = getThingKey(thing);
+                var canonical:Object = keyToCanonical[key];
+                var entry:Object = {
+                    oldId: id,
+                    thing: thing,
+                    canonical: canonical,
+                    newId: 0
+                };
+
+                if (canonical)
+                {
+                    duplicates.push(entry);
+                }
+                else
+                {
+                    keyToCanonical[key] = entry;
+                    kept.push(entry);
+                }
             }
-            return result;
+
+            var nextId:uint = minId;
+            for each (entry in kept)
+            {
+                var clone:ThingType = cloneThingWithRemappedSprites(entry.thing as ThingType);
+                clone.id = nextId;
+                clone.category = category;
+                output[nextId] = clone;
+                entry.newId = nextId;
+                oldToNew[uint(entry.oldId)] = nextId;
+                nextId++;
+            }
+
+            for each (entry in duplicates)
+            {
+                canonical = entry.canonical;
+                entry.newId = oldToNew[uint(canonical.oldId)];
+                oldToNew[uint(entry.oldId)] = uint(entry.newId);
+            }
+
+            return {
+                list: output,
+                count: nextId > minId ? nextId - 1 : minId,
+                removed: duplicates.length
+            };
+        }
+
+        private function getCategoryRemap(category:String):Dictionary
+        {
+            switch (category)
+            {
+                case ThingCategory.OUTFIT:
+                    return m_oldOutfitToNewOutfit;
+                case ThingCategory.EFFECT:
+                    return m_oldEffectToNewEffect;
+                case ThingCategory.MISSILE:
+                    return m_oldMissileToNewMissile;
+            }
+            return new Dictionary();
         }
 
         private function cloneThingWithRemappedSprites(thing:ThingType):ThingType

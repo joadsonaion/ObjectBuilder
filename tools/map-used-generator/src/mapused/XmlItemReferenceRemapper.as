@@ -16,8 +16,10 @@ package mapused
                 "creaturescripts": true,
                 "globalevents": true,
                 "lib": true,
+                "monster": true,
                 "movements": true,
                 "npc": true,
+                "raids": true,
                 "spells": true,
                 "talkactions": true,
                 "weapons": true
@@ -47,7 +49,12 @@ package mapused
             return copyDictionary(m_referencedIds);
         }
 
-        public function copyRemappedFolder(source:File, target:File, remap:Dictionary):Boolean
+        public function copyRemappedFolder(source:File,
+                target:File,
+                remap:Dictionary,
+                outfitRemap:Dictionary = null,
+                effectRemap:Dictionary = null,
+                missileRemap:Dictionary = null):Boolean
         {
             if (!source || !source.exists || !target)
                 return false;
@@ -62,7 +69,7 @@ package mapused
                 target.deleteDirectory(true);
             target.createDirectory();
 
-            copyFolderInternal(source, target, remap);
+            copyFolderInternal(source, target, remap, outfitRemap, effectRemap, missileRemap);
             return true;
         }
 
@@ -95,10 +102,15 @@ package mapused
                 return;
 
             filesCount++;
-            processFileText(file, readText(file).text, null, m_referencedIds);
+            processFileText(file, readText(file).text, null, m_referencedIds, null, null, null);
         }
 
-        private function copyFolderInternal(source:File, target:File, remap:Dictionary):void
+        private function copyFolderInternal(source:File,
+                target:File,
+                remap:Dictionary,
+                outfitRemap:Dictionary,
+                effectRemap:Dictionary,
+                missileRemap:Dictionary):void
         {
             if (source.isDirectory)
             {
@@ -110,7 +122,12 @@ package mapused
                 {
                     if (isServerDataRoot(source) && !isAllowedServerDataFolder(child))
                         continue;
-                    copyFolderInternal(child, target.resolvePath(child.name), remap);
+                    copyFolderInternal(child,
+                            target.resolvePath(child.name),
+                            remap,
+                            outfitRemap,
+                            effectRemap,
+                            missileRemap);
                 }
                 return;
             }
@@ -124,20 +141,37 @@ package mapused
 
             filesCount++;
             var loaded:Object = readText(source);
-            var remapped:String = processFileText(source, String(loaded.text), remap, null);
+            var remapped:String = processFileText(source,
+                    String(loaded.text),
+                    remap,
+                    null,
+                    outfitRemap,
+                    effectRemap,
+                    missileRemap);
             writeText(target, remapped, String(loaded.encoding));
         }
 
-        private function processFileText(file:File, text:String, remap:Dictionary, collect:Dictionary):String
+        private function processFileText(file:File,
+                text:String,
+                remap:Dictionary,
+                collect:Dictionary,
+                outfitRemap:Dictionary,
+                effectRemap:Dictionary,
+                missileRemap:Dictionary):String
         {
             if (isXmlFile(file))
-                return processXmlText(text, remap, collect);
+                return processXmlText(text, remap, collect, outfitRemap, effectRemap, missileRemap);
             if (isLuaFile(file))
-                return processLuaText(text, remap, collect);
+                return processLuaText(text, remap, collect, outfitRemap, effectRemap, missileRemap);
             return text;
         }
 
-        private function processXmlText(text:String, remap:Dictionary, collect:Dictionary):String
+        private function processXmlText(text:String,
+                remap:Dictionary,
+                collect:Dictionary,
+                outfitRemap:Dictionary,
+                effectRemap:Dictionary,
+                missileRemap:Dictionary):String
         {
             if (!text || text.length == 0)
                 return text;
@@ -150,7 +184,13 @@ package mapused
             while ((match = tagPattern.exec(text)) != null)
             {
                 result += text.substring(lastIndex, int(match.index));
-                result += processTag(String(match[0]), String(match[1]), remap, collect);
+                result += processTag(String(match[0]),
+                        String(match[1]),
+                        remap,
+                        collect,
+                        outfitRemap,
+                        effectRemap,
+                        missileRemap);
                 lastIndex = tagPattern.lastIndex;
             }
 
@@ -158,7 +198,13 @@ package mapused
             return result;
         }
 
-        private function processTag(tagText:String, tagName:String, remap:Dictionary, collect:Dictionary):String
+        private function processTag(tagText:String,
+                tagName:String,
+                remap:Dictionary,
+                collect:Dictionary,
+                outfitRemap:Dictionary,
+                effectRemap:Dictionary,
+                missileRemap:Dictionary):String
         {
             var normalizedTag:String = normalizeName(tagName);
             var attrPattern:RegExp = /([A-Za-z_][A-Za-z0-9_:\.-]*)(\s*=\s*)(["'])([^"']*)\3/g;
@@ -185,6 +231,18 @@ package mapused
                         isItemIdAttributeForTag(normalizedTag, normalizedAttr))
                 {
                     value = remapSingleItemValue(value, remap, collect);
+                }
+                else if (outfitRemap && isOutfitAttribute(normalizedAttr))
+                {
+                    value = remapAssetValue(value, outfitRemap);
+                }
+                else if (effectRemap && isEffectAttribute(normalizedAttr))
+                {
+                    value = remapAssetValue(value, effectRemap);
+                }
+                else if (missileRemap && isMissileAttribute(normalizedAttr))
+                {
+                    value = remapAssetValue(value, missileRemap);
                 }
 
                 result += attrName + separator + quote + value + quote;
@@ -287,7 +345,12 @@ package mapused
             return String(newId);
         }
 
-        private function processLuaText(text:String, remap:Dictionary, collect:Dictionary):String
+        private function processLuaText(text:String,
+                remap:Dictionary,
+                collect:Dictionary,
+                outfitRemap:Dictionary,
+                effectRemap:Dictionary,
+                missileRemap:Dictionary):String
         {
             if (!text || text.length == 0)
                 return text;
@@ -327,6 +390,33 @@ package mapused
                     remap,
                     collect);
 
+            if (outfitRemap)
+            {
+                text = remapLuaAssetPattern(text,
+                        /(\b(?:looktype|lookType|look_type|lookTypeId|looktypeid|outfitId|outfitid|outfitType|outfittype)\b\s*=\s*)(\d+)/g,
+                        outfitRemap);
+            }
+
+            if (effectRemap)
+            {
+                text = remapLuaAssetPattern(text,
+                        /(\b(?:effect|effectId|effectid|magicEffect|magiceffect|magicEffectId|magiceffectid|effectType|effecttype)\b\s*=\s*)(\d+)/g,
+                        effectRemap);
+                text = remapLuaAssetPattern(text,
+                        /(\b(?:doSendMagicEffect|sendMagicEffect)\s*\([^\r\n]*,\s*)(\d+)/g,
+                        effectRemap);
+            }
+
+            if (missileRemap)
+            {
+                text = remapLuaAssetPattern(text,
+                        /(\b(?:missile|missileId|missileid|distanceEffect|distanceeffect|distanceEffectId|distanceeffectid|shootEffect|shooteffect|shootEffectId|shooteffectid)\b\s*=\s*)(\d+)/g,
+                        missileRemap);
+                text = remapLuaAssetPattern(text,
+                        /(\b(?:doSendDistanceShoot|sendDistanceShoot)\s*\([^\r\n]*,\s*[^\r\n]*,\s*)(\d+)/g,
+                        missileRemap);
+            }
+
             return text;
         }
 
@@ -350,6 +440,90 @@ package mapused
 
             result += text.substr(lastIndex);
             return result;
+        }
+
+        private function remapLuaAssetPattern(text:String,
+                pattern:RegExp,
+                remap:Dictionary):String
+        {
+            var result:String = "";
+            var lastIndex:int = 0;
+            var match:Object;
+
+            while ((match = pattern.exec(text)) != null)
+            {
+                result += text.substring(lastIndex, int(match.index));
+                result += String(match[1]) + remapAssetNumber(uint(match[2]), String(match[2]), remap);
+                if (match.length > 3)
+                    result += String(match[3]);
+                lastIndex = pattern.lastIndex;
+            }
+
+            result += text.substr(lastIndex);
+            return result;
+        }
+
+        private function remapAssetValue(value:String, remap:Dictionary):String
+        {
+            var trimmed:String = trim(value);
+            if (!trimmed || !/^\d+(\s*[-,;|]\s*\d+)*$/.test(trimmed))
+                return value;
+            return preserveOuterWhitespace(value, remapAssetList(trimmed, remap));
+        }
+
+        private function remapAssetList(value:String, remap:Dictionary):String
+        {
+            var tokenPattern:RegExp = /(\d+)\s*-\s*(\d+)|(\d+)/g;
+            var result:String = "";
+            var lastIndex:int = 0;
+            var match:Object;
+
+            while ((match = tokenPattern.exec(value)) != null)
+            {
+                result += value.substring(lastIndex, int(match.index));
+                if (match[1] !== undefined && String(match[1]).length > 0)
+                    result += remapAssetRange(String(match[1]), String(match[2]), String(match[0]), remap);
+                else
+                    result += remapAssetNumber(uint(match[3]), String(match[3]), remap);
+                lastIndex = tokenPattern.lastIndex;
+            }
+
+            result += value.substr(lastIndex);
+            return result;
+        }
+
+        private function remapAssetRange(startText:String,
+                endText:String,
+                original:String,
+                remap:Dictionary):String
+        {
+            if (!isUnsignedInteger(startText) || !isUnsignedInteger(endText))
+                return original;
+
+            var start:uint = uint(startText);
+            var end:uint = uint(endText);
+            if (end < start || end - start > 10000)
+                return original;
+
+            var values:Array = [];
+            for (var id:uint = start; id <= end; id++)
+                values.push(remapAssetNumber(id, String(id), remap));
+            return values.join(";");
+        }
+
+        private function remapAssetNumber(oldId:uint,
+                original:String,
+                remap:Dictionary):String
+        {
+            if (oldId == 0 || !remap || remap[oldId] === undefined)
+                return original;
+
+            var newId:uint = uint(remap[oldId]);
+            if (newId == oldId)
+                return original;
+
+            remappedValuesCount++;
+            return String(newId);
         }
 
         private function remapNumericToken(value:String, remap:Dictionary, collect:Dictionary):String
@@ -441,6 +615,25 @@ package mapused
                     return true;
             }
             return false;
+        }
+
+        private function isOutfitAttribute(name:String):Boolean
+        {
+            return name == "looktype" || name == "looktypeid" ||
+                    name == "outfitid" || name == "outfittype";
+        }
+
+        private function isEffectAttribute(name:String):Boolean
+        {
+            return name == "effect" || name == "effectid" ||
+                    name == "magiceffect" || name == "magiceffectid";
+        }
+
+        private function isMissileAttribute(name:String):Boolean
+        {
+            return name == "missile" || name == "missileid" ||
+                    name == "distanceeffect" || name == "distanceeffectid" ||
+                    name == "shooteffect" || name == "shooteffectid";
         }
 
         private function isAllowedServerDataFolder(file:File):Boolean

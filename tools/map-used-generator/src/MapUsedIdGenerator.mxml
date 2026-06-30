@@ -250,6 +250,12 @@
                             appendLog("Novos server items: " + result.newServerItemsCount);
                             if (result.skippedInvalidServerItemsCount > 0)
                                 appendLog("Server items invalidos ignorados: " + result.skippedInvalidServerItemsCount);
+                            appendLog("Outfits: " + result.oldOutfitsCount + " -> " + result.outfitsCount +
+                                    " (" + result.removedOutfits + " duplicados removidos)");
+                            appendLog("Effects: " + result.oldEffectsCount + " -> " + result.effectsCount +
+                                    " (" + result.removedEffects + " duplicados removidos)");
+                            appendLog("Missiles: " + result.oldMissilesCount + " -> " + result.missilesCount +
+                                    " (" + result.removedMissiles + " duplicados removidos)");
                             appendLog("Sprites: " + result.oldSpriteCount + " -> " + result.newSpriteCount +
                                     " (" + result.removedSpritesCount + " removidas, " + result.reusedSpritesCount + " repetidas reaproveitadas)");
                             appendLog("Referencias remapeadas no mapa: " + result.rewrittenMapItemsCount);

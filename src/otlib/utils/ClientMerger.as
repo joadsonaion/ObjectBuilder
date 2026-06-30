@@ -584,7 +584,7 @@ package otlib.utils
                     return category == ThingCategory.MISSILE;
 
                 case ClientMergeMode.OBJECTS:
-                    return true;
+                    return category == ThingCategory.ITEM;
 
                 case ClientMergeMode.UNIQUE_ASSETS:
                     return category == ThingCategory.ITEM ||

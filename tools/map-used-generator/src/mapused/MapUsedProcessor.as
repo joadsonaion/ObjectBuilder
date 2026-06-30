@@ -206,7 +206,12 @@ package mapused
                     progress("Remapeando server data");
                 extraDataOutDir = outputDir.resolvePath("server_data_use_this");
                 var xmlRemapper:XmlItemReferenceRemapper = new XmlItemReferenceRemapper();
-                xmlRemapper.copyRemappedFolder(extraDataSource, extraDataOutDir, builder.getServerIdRemap());
+                xmlRemapper.copyRemappedFolder(extraDataSource,
+                        extraDataOutDir,
+                        builder.getServerIdRemap(),
+                        builder.getOutfitIdRemap(),
+                        builder.getEffectIdRemap(),
+                        builder.getMissileIdRemap());
                 copyGeneratedItemsIntoDataFolder(extraDataOutDir, otbOut, xmlOut);
                 extraDataRemappedFiles = xmlRemapper.filesCount;
                 extraDataRemappedValues = xmlRemapper.remappedValuesCount;
@@ -249,6 +254,15 @@ package mapused
                 newServerItemsCount: builder.newServerItemsCount,
                 oldSpriteCount: builder.oldSpriteCount,
                 newSpriteCount: builder.newSpriteCount,
+                oldOutfitsCount: builder.oldOutfitsCount,
+                outfitsCount: builder.outfitsCount,
+                oldEffectsCount: builder.oldEffectsCount,
+                effectsCount: builder.effectsCount,
+                oldMissilesCount: builder.oldMissilesCount,
+                missilesCount: builder.missilesCount,
+                removedOutfits: builder.removedOutfits,
+                removedEffects: builder.removedEffects,
+                removedMissiles: builder.removedMissiles,
                 reusedSpritesCount: builder.reusedSpritesCount,
                 removedSpritesCount: builder.removedSpritesCount,
                 rewrittenMapItemsCount: builder.rewrittenMapItemsCount,
