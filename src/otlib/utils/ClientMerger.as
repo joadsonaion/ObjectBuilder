@@ -77,6 +77,7 @@ package otlib.utils
         private var m_currentSpriteHashes:Dictionary;
         private var m_existingThingKeys:Dictionary;
         private var m_sourceSpriteIds:Dictionary;
+        private var m_currentVisualSignature:AssetVisualSignature;
 
         private var m_currentObjects:ThingTypeStorage;
         private var m_currentSprites:SpriteStorage;
@@ -254,6 +255,8 @@ package otlib.utils
             mergeSpriteList(1, m_sprites.spritesCount);
             dispatchEvent(new ProgressEvent(ProgressEvent.PROGRESS, ProgressBarID.DEFAULT, 1, 5));
 
+            m_currentVisualSignature = new AssetVisualSignature(m_currentSprites);
+
             if (m_reuseExistingSprites)
                 buildExistingThingIndex();
 
@@ -299,6 +302,7 @@ package otlib.utils
             m_currentSpriteHashes = null;
             m_existingThingKeys = null;
             m_sourceSpriteIds = null;
+            m_currentVisualSignature = null;
 
             if (hasEventListener(Event.COMPLETE))
                 dispatchEvent(new Event(Event.COMPLETE));
@@ -614,6 +618,9 @@ package otlib.utils
 
         private function getThingKey(thing:ThingType):String
         {
+            if (usesPerceptualThingKey(thing.category))
+                return getPerceptualThingKey(thing);
+
             if (m_mergeMode == ClientMergeMode.UNIQUE_ASSETS)
                 return getVisualThingKey(thing);
 
@@ -621,6 +628,20 @@ package otlib.utils
                 return getNormalizedThingKey(thing);
 
             return getFullThingKey(thing);
+        }
+
+        private function usesPerceptualThingKey(category:String):Boolean
+        {
+            return category == ThingCategory.OUTFIT ||
+                    category == ThingCategory.EFFECT ||
+                    category == ThingCategory.MISSILE;
+        }
+
+        private function getPerceptualThingKey(thing:ThingType):String
+        {
+            if (m_currentVisualSignature)
+                return m_currentVisualSignature.getThingVisualKey(thing);
+            return getVisualThingKey(thing);
         }
 
         private function getNormalizedThingKey(thing:ThingType):String

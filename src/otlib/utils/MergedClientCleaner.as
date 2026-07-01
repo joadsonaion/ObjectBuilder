@@ -60,6 +60,7 @@ package otlib.utils
         private var m_nextSpriteId:uint;
         private var m_categoryMaps:Dictionary;
         private var m_mappingRows:Array;
+        private var m_visualSignature:AssetVisualSignature;
 
         public var oldItemsCount:uint;
         public var oldOutfitsCount:uint;
@@ -238,6 +239,7 @@ package otlib.utils
             m_nextSpriteId = 1;
             m_categoryMaps = new Dictionary();
             m_mappingRows = [];
+            m_visualSignature = new AssetVisualSignature(m_sprites);
         }
 
         private function cleanCategory(list:Dictionary,
@@ -251,6 +253,7 @@ package otlib.utils
             var oldToNew:Dictionary = new Dictionary();
             var entries:Array = [];
             var groups:Dictionary = new Dictionary();
+            var usePerceptualVisual:Boolean = category != ThingCategory.ITEM;
 
             for (var id:uint = minId; id <= maxId; id++)
             {
@@ -259,11 +262,12 @@ package otlib.utils
                     continue;
 
                 thing.category = category;
-                var key:String = getThingKey(thing);
+                var key:String = usePerceptualVisual ? getDuplicateThingKey(thing) : getThingKey(thing);
                 var entry:Object = {
                     oldId: id,
                     thing: thing,
                     key: key,
+                    quality: usePerceptualVisual ? m_visualSignature.getThingQualityScore(thing) : 0,
                     removed: false,
                     canonicalOldId: id,
                     newId: 0
@@ -286,28 +290,45 @@ package otlib.utils
                     continue;
 
                 var canonical:Object = null;
-                for each (entry in group)
+                if (usePerceptualVisual)
                 {
-                    if (uint(entry.oldId) >= removalCutoff)
+                    canonical = chooseBestVisualEntry(group);
+                    for each (entry in group)
                     {
-                        canonical = entry;
-                        break;
-                    }
-                }
-                if (!canonical)
-                    canonical = group[0];
+                        if (entry === canonical)
+                            continue;
 
-                for each (entry in group)
-                {
-                    if (entry === canonical)
-                        continue;
-
-                    if (uint(entry.oldId) < removalCutoff)
-                    {
                         entry.removed = true;
                         entry.duplicate = true;
                         entry.canonicalOldId = canonical.oldId;
                         duplicatesBelowCutoff++;
+                    }
+                }
+                else
+                {
+                    for each (entry in group)
+                    {
+                        if (uint(entry.oldId) >= removalCutoff)
+                        {
+                            canonical = entry;
+                            break;
+                        }
+                    }
+                    if (!canonical)
+                        canonical = group[0];
+
+                    for each (entry in group)
+                    {
+                        if (entry === canonical)
+                            continue;
+
+                        if (uint(entry.oldId) < removalCutoff)
+                        {
+                            entry.removed = true;
+                            entry.duplicate = true;
+                            entry.canonicalOldId = canonical.oldId;
+                            duplicatesBelowCutoff++;
+                        }
                     }
                 }
             }
@@ -385,6 +406,31 @@ package otlib.utils
                 removed: duplicatesBelowCutoff,
                 duplicates: duplicatesBelowCutoff
             };
+        }
+
+        private function getDuplicateThingKey(thing:ThingType):String
+        {
+            return m_visualSignature ? m_visualSignature.getThingVisualKey(thing) : getThingKey(thing);
+        }
+
+        private function chooseBestVisualEntry(group:Array):Object
+        {
+            var best:Object = group[0];
+            for each (var entry:Object in group)
+            {
+                if (Number(entry.quality) > Number(best.quality) + 0.001)
+                {
+                    best = entry;
+                    continue;
+                }
+
+                if (Math.abs(Number(entry.quality) - Number(best.quality)) <= 0.001 &&
+                        uint(entry.oldId) > uint(best.oldId))
+                {
+                    best = entry;
+                }
+            }
+            return best;
         }
 
         private function cloneThingWithRemappedSprites(thing:ThingType):ThingType

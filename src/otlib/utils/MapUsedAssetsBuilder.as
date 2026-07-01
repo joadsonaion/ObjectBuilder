@@ -91,6 +91,7 @@ package otlib.utils
         private var m_preserveClientItemIds:Boolean;
         private var m_thingHashToClientId:Dictionary;
         private var m_thingHashCache:Dictionary;
+        private var m_visualSignature:AssetVisualSignature;
 
         public var mapItemNodesCount:uint;
         public var mapCompactItemsCount:uint;
@@ -286,6 +287,7 @@ package otlib.utils
             m_newSprites = new Dictionary();
             m_thingHashToClientId = new Dictionary();
             m_thingHashCache = new Dictionary();
+            m_visualSignature = new AssetVisualSignature(m_sprites);
             m_nextSpriteId = 1;
             m_nextClientItemId = ThingTypeStorage.MIN_ITEM_ID;
             m_nextServerItemId = 100;
@@ -1003,9 +1005,9 @@ package otlib.utils
         {
             var output:Dictionary = new Dictionary();
             var oldToNew:Dictionary = getCategoryRemap(category);
-            var keyToCanonical:Dictionary = new Dictionary();
-            var kept:Array = [];
-            var duplicates:Array = [];
+            var groups:Dictionary = new Dictionary();
+            var entries:Array = [];
+            var removed:uint = 0;
 
             for (var id:uint = minId; id <= maxId; id++)
             {
@@ -1014,29 +1016,50 @@ package otlib.utils
                     continue;
 
                 thing.category = category;
-                var key:String = getThingKey(thing);
-                var canonical:Object = keyToCanonical[key];
+                var key:String = getDuplicateThingKey(thing);
                 var entry:Object = {
                     oldId: id,
                     thing: thing,
-                    canonical: canonical,
+                    key: key,
+                    quality: m_visualSignature.getThingQualityScore(thing),
+                    removed: false,
+                    canonicalOldId: id,
                     newId: 0
                 };
+                entries.push(entry);
 
-                if (canonical)
+                var group:Array = groups[key] as Array;
+                if (!group)
                 {
-                    duplicates.push(entry);
+                    group = [];
+                    groups[key] = group;
                 }
-                else
+                group.push(entry);
+            }
+
+            for each (group in groups)
+            {
+                if (group.length < 2)
+                    continue;
+
+                var canonical:Object = chooseBestVisualEntry(group);
+                for each (entry in group)
                 {
-                    keyToCanonical[key] = entry;
-                    kept.push(entry);
+                    if (entry === canonical)
+                        continue;
+
+                    entry.removed = true;
+                    entry.canonicalOldId = canonical.oldId;
+                    removed++;
                 }
             }
 
             var nextId:uint = minId;
-            for each (entry in kept)
+            for each (entry in entries)
             {
+                if (entry.removed)
+                    continue;
+
                 var clone:ThingType = cloneThingWithRemappedSprites(entry.thing as ThingType);
                 clone.id = nextId;
                 clone.category = category;
@@ -1046,18 +1069,45 @@ package otlib.utils
                 nextId++;
             }
 
-            for each (entry in duplicates)
+            for each (entry in entries)
             {
-                canonical = entry.canonical;
-                entry.newId = oldToNew[uint(canonical.oldId)];
+                if (!entry.removed)
+                    continue;
+
+                entry.newId = oldToNew[uint(entry.canonicalOldId)];
                 oldToNew[uint(entry.oldId)] = uint(entry.newId);
             }
 
             return {
                 list: output,
                 count: nextId > minId ? nextId - 1 : minId,
-                removed: duplicates.length
+                removed: removed
             };
+        }
+
+        private function getDuplicateThingKey(thing:ThingType):String
+        {
+            return m_visualSignature ? m_visualSignature.getThingVisualKey(thing) : getThingKey(thing);
+        }
+
+        private function chooseBestVisualEntry(group:Array):Object
+        {
+            var best:Object = group[0];
+            for each (var entry:Object in group)
+            {
+                if (Number(entry.quality) > Number(best.quality) + 0.001)
+                {
+                    best = entry;
+                    continue;
+                }
+
+                if (Math.abs(Number(entry.quality) - Number(best.quality)) <= 0.001 &&
+                        uint(entry.oldId) > uint(best.oldId))
+                {
+                    best = entry;
+                }
+            }
+            return best;
         }
 
         private function getCategoryRemap(category:String):Dictionary
