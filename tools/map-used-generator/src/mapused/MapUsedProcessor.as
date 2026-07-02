@@ -196,6 +196,10 @@ package mapused
             var otfi:OTFI = new OTFI(features, datOut.name, sprOut.name, SpriteExtent.DEFAULT_SIZE, SpriteExtent.DEFAULT_DATA_SIZE);
             otfi.save(outputDir.resolvePath("Tibia.otfi"));
             var serverItemsDir:File = writeGeneratedServerItemsFolder(outputDir, otbOut, xmlOut);
+            if (progress != null)
+                progress("Gerando XMLs do RME");
+            var rmeWriter:RmeCompactXmlWriter = new RmeCompactXmlWriter();
+            var rmeResult:Object = rmeWriter.write(outputDir, builder.getRmeItemRows(), otbOut, xmlOut);
             var extraDataOutDir:File = null;
             var extraDataRemappedFiles:uint = 0;
             var extraDataRemappedValues:uint = 0;
@@ -237,6 +241,13 @@ package mapused
                 map: mapOut.nativePath,
                 otfi: outputDir.resolvePath("Tibia.otfi").nativePath,
                 readme: readmeFile.nativePath,
+                rmeDir: rmeResult ? rmeResult.directory : "",
+                rmeGrounds: rmeResult ? rmeResult.grounds : 0,
+                rmeWalls: rmeResult ? rmeResult.walls : 0,
+                rmeDoodads: rmeResult ? rmeResult.doodads : 0,
+                rmeRaw: rmeResult ? rmeResult.raw : 0,
+                rmeLiquids: rmeResult ? rmeResult.liquids : 0,
+                rmePickups: rmeResult ? rmeResult.pickups : 0,
                 usedCsv: usedIdsFile.nativePath,
                 remapCsv: remapCsv.nativePath,
                 extraXmlSource: extraDataSource ? extraDataSource.nativePath : "",
@@ -322,6 +333,7 @@ package mapused
             stream.writeUTFBytes("  Copie/aponte items.otb: " + otbOut.nativePath + File.lineEnding);
             stream.writeUTFBytes("  Copie/aponte items.xml: " + xmlOut.nativePath + File.lineEnding);
             stream.writeUTFBytes("  Mapa remapeado: " + mapOut.nativePath + File.lineEnding);
+            stream.writeUTFBytes("  XMLs do RME gerados em: " + outputDir.resolvePath("rme_data_use_this").nativePath + File.lineEnding);
             if (extraXmlSource && extraXmlOutDir)
             {
                 stream.writeUTFBytes("  Data/XML extra original: " + extraXmlSource.nativePath + File.lineEnding);

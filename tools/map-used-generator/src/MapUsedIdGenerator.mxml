@@ -263,6 +263,13 @@
                             appendLog("SPR: " + result.spr);
                             appendLog("OTB: " + result.otb);
                             appendLog("XML: " + result.xml);
+                            appendLog("RME data/860 pronto: " + result.rmeDir);
+                            appendLog("RME XMLs: grounds=" + result.rmeGrounds +
+                                    ", walls=" + result.rmeWalls +
+                                    ", doodads=" + result.rmeDoodads +
+                                    ", pickups=" + result.rmePickups +
+                                    ", liquids=" + result.rmeLiquids +
+                                    ", raw=" + result.rmeRaw);
                             appendLog("Server Items Folder para ObjectBuilder: " + result.serverItemsDir);
                             appendLog("OTFI: " + result.otfi);
                             appendLog("Mapa remapeado: " + result.map);
