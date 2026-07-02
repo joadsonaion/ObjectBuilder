@@ -473,29 +473,34 @@
         </s:HGroup>
     </s:VGroup>
 
-    <s:HGroup width="100%" verticalAlign="middle" gap="16">
-        <s:Label text="Novo server ID inicial"/>
-        <s:TextInput id="startIdInput" width="90"/>
-        <s:Label text="Cutoff cleanup"/>
-        <s:TextInput id="cleanupCutoffInput" width="90"/>
-        <s:Label text="Versao"/>
-        <s:TextInput id="versionInput" width="70"/>
-        <s:Label text="Attr"/>
-        <s:TextInput id="attributeServerInput" width="90"/>
-    </s:HGroup>
+    <s:VGroup width="100%" gap="8">
+        <s:HGroup width="100%" verticalAlign="middle" gap="16">
+            <s:Label text="Novo server ID inicial"/>
+            <s:TextInput id="startIdInput" width="90"/>
+            <s:Label text="Cutoff cleanup"/>
+            <s:TextInput id="cleanupCutoffInput" width="90"/>
+            <s:Label text="Versao"/>
+            <s:TextInput id="versionInput" width="70"/>
+            <s:Label text="Attr"/>
+            <s:TextInput id="attributeServerInput" width="90"/>
+        </s:HGroup>
 
-    <s:HGroup width="100%" verticalAlign="middle" gap="14">
-        <s:CheckBox id="compactClientCheck" label="Gerar cliente compacto DAT/SPR/OTB"/>
-        <s:CheckBox id="cleanupModeCheck" label="Modo cleanup merge (ceea262)"/>
-        <s:CheckBox id="mapXmlTrimCheck" label="Podar itens pelo mapa + items.xml"/>
-        <s:CheckBox id="rewriteMapCheck" label="Gerar mapa remapeado"/>
-        <s:CheckBox id="extendedCheck" label="Extended"/>
-        <s:CheckBox id="transparencyCheck" label="Transparency"/>
-        <s:CheckBox id="improvedAnimationsCheck" label="Improved anim"/>
-        <s:CheckBox id="frameGroupsCheck" label="Frame groups"/>
-        <s:Spacer width="100%"/>
-        <s:Button id="runButton" label="Gerar" width="140" click="runGenerator()"/>
-    </s:HGroup>
+        <s:HGroup width="100%" verticalAlign="middle" gap="14">
+            <s:CheckBox id="compactClientCheck" label="Gerar cliente compacto DAT/SPR/OTB"/>
+            <s:CheckBox id="cleanupModeCheck" label="Modo cleanup merge (ceea262)"/>
+            <s:CheckBox id="mapXmlTrimCheck" label="Podar itens pelo mapa + items.xml"/>
+            <s:CheckBox id="rewriteMapCheck" label="Gerar mapa remapeado"/>
+        </s:HGroup>
+
+        <s:HGroup width="100%" verticalAlign="middle" gap="14">
+            <s:CheckBox id="extendedCheck" label="Extended"/>
+            <s:CheckBox id="transparencyCheck" label="Transparency"/>
+            <s:CheckBox id="improvedAnimationsCheck" label="Improved anim"/>
+            <s:CheckBox id="frameGroupsCheck" label="Frame groups"/>
+            <s:Spacer width="100%"/>
+            <s:Button id="runButton" label="Gerar" width="140" click="runGenerator()"/>
+        </s:HGroup>
+    </s:VGroup>
 
     <s:TextArea id="logArea" width="100%" height="100%" editable="false"/>
 </s:WindowedApplication>
